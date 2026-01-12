@@ -232,7 +232,7 @@ def show_gui_for_labeling(
             r = idx // COLS
             c = idx % COLS
 
-            tile = tk.Frame(grid_frame, bd=0, relief="flat", highlightthickness=1)
+            tile = tk.Frame(grid_frame, bd=0, relief="flat", highlightthickness=1, highlightbackground="#b0b0b0", highlightcolor="#b0b0b0")
             tile.grid(row=r, column=c, padx=PADX, pady=PADY, sticky="n")
             tile_widgets[key] = tile
 
