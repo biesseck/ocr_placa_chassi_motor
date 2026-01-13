@@ -889,6 +889,7 @@ def show_gui_for_labeling_license_plate(
     '''
     def _on_close():
         root.destroy()
+        print("        User closed the window. Exiting program.")
         sys.exit(0)
 
     tk.Button(bottom, text="Clear", command=_clear).pack(side=tk.LEFT)
@@ -948,9 +949,10 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     raise FileNotFoundError(f"Image file not found: {img_path}")
 
+        print("    Launching GUI for labeling...")
         # dict_selected_labeled_imgs = show_gui_for_labeling_licenseplate_chassi_engine(dados_vistoria_corrected, imgs_vistoria)
         dict_selected_labeled_imgs = show_gui_for_labeling_license_plate(dados_vistoria_corrected, imgs_vistoria)
-        print("    dict_selected_labeled_imgs:", dict_selected_labeled_imgs)
+        print("        dict_selected_labeled_imgs:", dict_selected_labeled_imgs)
 
         print("-----------")
         # sys.exit(0)
