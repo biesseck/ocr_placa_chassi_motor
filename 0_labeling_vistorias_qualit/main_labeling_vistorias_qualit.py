@@ -7,11 +7,12 @@ from pathlib import Path
 import json
 from PIL import Image
 
-from typing import Dict, Any
+import os
 import tkinter as tk
 from tkinter import messagebox
-from tkinter import font as tkfont
-from PIL import ImageTk
+import tkinter.font as tkfont
+from typing import Any
+from PIL import Image, ImageTk
     
 
 __version__ = "0.1.0"
@@ -48,66 +49,70 @@ def load_all_subdirs(input_folder: str) -> list[str]:
     return subdirs
 
 
-def show_gui_for_labeling(dados_vistoria: dict, imgs_vistoria: dict[str, Image.Image]) -> dict:
-    return dados_vistoria
 
 
 
-def show_gui_for_labeling(
+def show_gui_for_labeling_licenseplate_chassi_engine(
     dados_vistoria: dict,
     imgs_vistoria: dict[str, Image.Image],
-) -> dict:
-    """
-    GUI to select exactly 3 images from imgs_vistoria (dict key = image key / id).
-    - Window auto-sizes to a percentage of the user's screen.
-    - Thumbnail size is computed from available window width and the number of columns.
-    - Shows both the dict key and a "filename" (basename of the key) in a larger/bold font.
+) -> dict[str, str]:
+    SLOT_LABELS = ["URL Placa LABELED", "URL Chassi LABELED", "URL Motor LABELED"]
+    SLOT_COLORS = {
+        "URL Placa LABELED": "#f1c40f",   # yellow/gold
+        "URL Chassi LABELED": "#2ecc71",  # green
+        "URL Motor LABELED": "#3498db",   # blue
+    }
 
-    Returns:
-      {
-        "dados_vistoria": <original>,
-        "selected_filenames": [<3 selected keys in order>]   # keys of imgs_vistoria
-      }
-    """
     if not imgs_vistoria:
-        return {"dados_vistoria": dados_vistoria, "selected_filenames": []}
+        return {lab: "" for lab in SLOT_LABELS}
 
     root = tk.Tk()
-    root.title("Select 3 images")
+    root.title("Select 3 images for labels")
 
     # ---- Size window relative to screen ----
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
 
-    # Use ~90% of screen, with sane minimums
     win_w = max(900, int(screen_w * 0.90))
     win_h = max(650, int(screen_h * 0.85))
 
-    # Center the window
     x = max(0, (screen_w - win_w) // 2)
     y = min(10, (screen_h - win_h) // 2)
     root.geometry(f"{win_w}x{win_h}+{x}+{y}")
 
     # --- State ---
-    selected: list[str] = []
+    slot_to_key: dict[str, str | None] = {lab: None for lab in SLOT_LABELS}
+    active_slot: str | None = None
+
+    # keep PhotoImages alive
     thumb_cache: dict[str, ImageTk.PhotoImage] = {}
+    slot_thumb_cache: dict[str, ImageTk.PhotoImage] = {}
+
     tile_widgets: dict[str, tk.Frame] = {}
     img_labels: dict[str, tk.Label] = {}
 
-    # --- Fonts (bigger + bold) ---
-    label_font = tkfont.Font(root=root, size=11, weight="bold")  # slightly bigger, bold
+    slot_frames: dict[str, tk.Frame] = {}
+    slot_img_labels: dict[str, tk.Label] = {}
+    slot_text_vars: dict[str, tk.StringVar] = {}
+
+    # --- Fonts ---
+    grid_label_font = tkfont.Font(root=root, size=11, weight="bold")
+    slot_title_font = tkfont.Font(root=root, size=11, weight="bold")
+    slot_filename_font = tkfont.Font(root=root, size=10, weight="normal")
 
     # --- Top bar ---
     top = tk.Frame(root)
     top.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(10, 6))
 
-    info_var = tk.StringVar(value="Click to select up to 3 images.")
-    info_lbl = tk.Label(top, textvariable=info_var, anchor="w")
-    info_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    info_var = tk.StringVar(value="Click a slot above, then click an image below to assign it.")
+    tk.Label(top, textvariable=info_var, anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True)
 
-    selected_var = tk.StringVar(value="Selected (0/3): ")
-    selected_lbl = tk.Label(top, textvariable=selected_var, anchor="e")
-    selected_lbl.pack(side=tk.RIGHT)
+    assigned_var = tk.StringVar(value="Assigned (0/3)")
+    tk.Label(top, textvariable=assigned_var, anchor="e").pack(side=tk.RIGHT)
+
+    # --- Slots row (FIRST ROW) ---
+    slots_row = tk.Frame(root)
+    slots_row.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(0, 10))
 
     # --- Scrollable area ---
     container = tk.Frame(root)
@@ -116,6 +121,7 @@ def show_gui_for_labeling(
     canvas = tk.Canvas(container, highlightthickness=0)
     vsb = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
     canvas.configure(yscrollcommand=vsb.set)
+
     vsb.pack(side=tk.RIGHT, fill=tk.Y)
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
@@ -131,7 +137,7 @@ def show_gui_for_labeling(
     grid_frame.bind("<Configure>", _on_frame_configure)
     canvas.bind("<Configure>", _on_canvas_configure)
 
-    # Mouse wheel (Windows/macOS/Linux)
+    # Mouse wheel
     def _on_mousewheel(event):
         if event.delta:
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -145,36 +151,13 @@ def show_gui_for_labeling(
     root.bind_all("<Button-4>", _on_mousewheel)
     root.bind_all("<Button-5>", _on_mousewheel)
 
-    # --- Layout + thumbnail sizing ---
+    # --- Grid layout ---
     COLS = 4
     PADX = 10
     PADY = 10
 
-    def _compute_thumb_size() -> tuple[int, int]:
-        """
-        Compute thumbnail size based on *current* canvas width.
-        """
-        # canvas.winfo_width() is 1 early on; fallback to window width
-        cw = canvas.winfo_width()
-        if cw <= 2:
-            cw = win_w - 40
-
-        # Approx scrollbar width
-        scrollbar_w = 18
-
-        # available width inside canvas for tiles
-        available = max(300, cw - scrollbar_w)
-
-        # total horizontal padding between tiles: each tile has left+right PADX in grid()
-        # within 4 columns there are 8 PADX spaces, but grid pads apply per-widget.
-        # We approximate with: COLS * 2*PADX plus a little margin.
-        total_pad = COLS * (2 * PADX) + 10
-        tile_w = max(160, int((available - total_pad) / COLS))
-
-        # Keep a nice aspect ratio for thumbs
-        thumb_w = tile_w
-        thumb_h = int(tile_w * 0.72)  # ~ wide thumbnail
-        return thumb_w, thumb_h
+    keys = list(imgs_vistoria.keys())
+    pil_cache: dict[str, Image.Image] = {k: imgs_vistoria[k] for k in keys}
 
     def _make_thumbnail(img: Image.Image, max_size: tuple[int, int]) -> ImageTk.PhotoImage:
         im = img.copy()
@@ -183,56 +166,232 @@ def show_gui_for_labeling(
         im.thumbnail(max_size, Image.LANCZOS)
         return ImageTk.PhotoImage(im)
 
-    # --- Selection helpers ---
-    def _update_selected_label():
-        selected_var.set(f"Selected ({len(selected)}/3): " + ", ".join(selected))
+    def _filename_for_key(key: str) -> str:
+        try:
+            return os.path.basename(dados_vistoria[key])
+        except Exception:
+            return os.path.basename(str(key))
 
-    def _set_tile_selected_visual(key: str, is_selected: bool):
-        tile = tile_widgets.get(key)
-        if not tile:
-            return
-        if is_selected:
+    def _assigned_count() -> int:
+        return sum(1 for v in slot_to_key.values() if v is not None)
+
+    def _update_assigned_label():
+        assigned_var.set(f"Assigned ({_assigned_count()}/3)")
+
+    def _slot_for_key(key: str) -> str | None:
+        for lab, k in slot_to_key.items():
+            if k == key:
+                return lab
+        return None
+
+    def _first_empty_slot() -> str | None:
+        for lab in SLOT_LABELS:
+            if slot_to_key[lab] is None:
+                return lab
+        return None
+
+    # --- Compute thumbnail sizes ---
+    def _compute_grid_thumb_size() -> tuple[int, int]:
+        cw = canvas.winfo_width()
+        if cw <= 2:
+            cw = win_w - 40
+
+        scrollbar_w = 18
+        available = max(300, cw - scrollbar_w)
+        total_pad = COLS * (2 * PADX) + 10
+        tile_w = max(160, int((available - total_pad) / COLS))
+
+        thumb_w = tile_w
+        # thumb_h = int(tile_w * 0.72)
+        thumb_h = int(tile_w * 0.5)
+        return thumb_w, thumb_h
+
+    def _compute_slot_thumb_size() -> tuple[int, int]:
+        # Use the slots_row width to give slots a "grid-like" comfortable size.
+        sw = slots_row.winfo_width()
+        if sw <= 2:
+            sw = win_w - 40
+
+        # 3 slots, with grid padx=10 and some internal padding
+        # subtract approximate spacing between the 3 frames
+        slot_frame_w = int((sw - 2 * 10 * 3 - 20) / 3)  # rough but stable
+        slot_frame_w = max(240, slot_frame_w)
+
+        # allow some room for title + filename lines and padding
+        thumb_w = max(220, slot_frame_w - 30)
+        # thumb_h = int(thumb_w * 0.72)
+        thumb_h = int(thumb_w * 0.4)
+        return thumb_w, thumb_h
+
+    # --- Slot visuals ---
+    def _set_slot_active_visual(label: str, is_active: bool):
+        frame = slot_frames[label]
+        color = SLOT_COLORS[label]
+        frame.configure(
+            highlightbackground=color,
+            highlightcolor=color,
+            highlightthickness=4 if is_active else 2,
+        )
+
+    def _refresh_all_slot_active_visuals():
+        for lab in SLOT_LABELS:
+            _set_slot_active_visual(lab, lab == active_slot)
+
+    # --- Tile visuals based on slot assignment ---
+    def _highlight_tiles_from_slots():
+        # Reset all tiles
+        for k, tile in tile_widgets.items():
             tile.configure(
-                highlightbackground="#2a7fff",
-                highlightcolor="#2a7fff",
-                highlightthickness=3,
-                bg="#eaf3ff",
+                highlightthickness=1,
+                highlightbackground="#b0b0b0",
+                highlightcolor="#b0b0b0",
+                bg=tile.master.cget("bg"),
             )
-        else:
-            tile.configure(highlightthickness=1, bg=tile.master.cget("bg"))
 
-    def _toggle_selection(key: str):
-        if key in selected:
-            selected.remove(key)
-            _set_tile_selected_visual(key, False)
-            _update_selected_label()
+        # Color assigned tiles by their slot
+        for lab, key in slot_to_key.items():
+            if key is None:
+                continue
+            tile = tile_widgets.get(key)
+            if tile:
+                color = SLOT_COLORS[lab]
+                tile.configure(
+                    highlightthickness=4,
+                    highlightbackground=color,
+                    highlightcolor=color,
+                    bg="#eef6ff",
+                )
+
+    # --- Slot UI update ---
+    def _update_slot_ui(label: str):
+        key = slot_to_key[label]
+        if key is None:
+            slot_img_labels[label].configure(image="", text="(click to choose)", compound="center")
+            slot_text_vars[label].set("")
+            slot_thumb_cache.pop(label, None)
             return
 
-        if len(selected) >= 3:
-            messagebox.showwarning("Limit reached", "You can select only 3 images. Unselect one to choose another.")
+        try:
+            tw, th = _compute_slot_thumb_size()
+            thumb = _make_thumbnail(pil_cache[key], (tw, th))
+            slot_thumb_cache[label] = thumb
+            slot_img_labels[label].configure(image=thumb, text="", compound="center")
+        except Exception:
+            slot_img_labels[label].configure(image="", text="(preview failed)", compound="center")
+            slot_thumb_cache.pop(label, None)
+
+        slot_text_vars[label].set(_filename_for_key(key))
+
+    def _update_all_slots_ui():
+        for lab in SLOT_LABELS:
+            _update_slot_ui(lab)
+        _update_assigned_label()
+        _highlight_tiles_from_slots()
+        _refresh_all_slot_active_visuals()
+
+    # --- Actions ---
+    def _on_slot_click(label: str):
+        nonlocal active_slot
+        active_slot = None if active_slot == label else label
+        _refresh_all_slot_active_visuals()
+
+    def _assign_key_to_slot(label: str, key: str):
+        prev = _slot_for_key(key)
+        if prev is not None and prev != label:
+            slot_to_key[prev] = None
+            _update_slot_ui(prev)
+
+        slot_to_key[label] = key
+        _update_slot_ui(label)
+        _update_assigned_label()
+        _highlight_tiles_from_slots()
+
+    def _unassign_slot(label: str):
+        slot_to_key[label] = None
+        _update_slot_ui(label)
+        _update_assigned_label()
+        _highlight_tiles_from_slots()
+
+    def _on_tile_click(key: str):
+        nonlocal active_slot
+
+        target = active_slot
+        if target is None:
+            target = _first_empty_slot()
+            if target is None:
+                messagebox.showwarning("All slots filled", "Click a slot to replace its image.")
+                return
+
+        if _slot_for_key(key) == target:
+            _unassign_slot(target)
             return
 
-        selected.append(key)
-        _set_tile_selected_visual(key, True)
-        _update_selected_label()
+        _assign_key_to_slot(target, key)
+
+    # --- Build slots row ---
+    def _build_slots_row():
+        for i, lab in enumerate(SLOT_LABELS):
+            frame = tk.Frame(
+                slots_row,
+                bd=0,
+                relief="flat",
+                padx=8,
+                pady=8,
+                highlightthickness=2,
+                highlightbackground=SLOT_COLORS[lab],
+                highlightcolor=SLOT_COLORS[lab],
+            )
+            frame.grid(row=0, column=i, padx=10, pady=0, sticky="nsew")
+            slots_row.grid_columnconfigure(i, weight=1)
+
+            slot_frames[lab] = frame
+
+            tk.Label(frame, text=lab, font=slot_title_font, anchor="center").pack(fill=tk.X)
+
+            # IMPORTANT: no width/height here; let it grow and show the image big
+            img_lbl = tk.Label(
+                frame,
+                text="(click to choose)",
+                bd=0,
+                relief="flat",
+                cursor="hand2",
+                compound="center",
+            )
+            img_lbl.pack(fill=tk.BOTH, expand=True, pady=(6, 4))
+            slot_img_labels[lab] = img_lbl
+
+            fn_var = tk.StringVar(value="")
+            slot_text_vars[lab] = fn_var
+            tk.Label(frame, textvariable=fn_var, font=slot_filename_font, anchor="center").pack(fill=tk.X)
+
+            def bind_all(widget):
+                widget.bind("<Button-1>", lambda _e, _lab=lab: _on_slot_click(_lab))
+
+            bind_all(frame)
+            for child in frame.winfo_children():
+                bind_all(child)
+
+    _build_slots_row()
 
     # --- Build grid ---
-    keys = list(imgs_vistoria.keys())
-
-    # Keep the original PIL images around so we can rescale thumbs if needed
-    pil_cache: dict[str, Image.Image] = {k: imgs_vistoria[k] for k in keys}
-
-    def _bind_click(widget, _key: str):
-        widget.bind("<Button-1>", lambda _e: _toggle_selection(_key))
+    def _bind_tile_click(widget, _key: str):
+        widget.bind("<Button-1>", lambda _e: _on_tile_click(_key))
 
     def _build_grid():
-        thumb_w, thumb_h = _compute_thumb_size()
+        thumb_w, thumb_h = _compute_grid_thumb_size()
 
         for idx, key in enumerate(keys):
             r = idx // COLS
             c = idx % COLS
 
-            tile = tk.Frame(grid_frame, bd=0, relief="flat", highlightthickness=1, highlightbackground="#b0b0b0", highlightcolor="#b0b0b0")
+            tile = tk.Frame(
+                grid_frame,
+                bd=0,
+                relief="flat",
+                highlightthickness=1,
+                highlightbackground="#b0b0b0",
+                highlightcolor="#b0b0b0",
+            )
             tile.grid(row=r, column=c, padx=PADX, pady=PADY, sticky="n")
             tile_widgets[key] = tile
 
@@ -243,70 +402,79 @@ def show_gui_for_labeling(
                 img_lbl.pack()
                 img_labels[key] = img_lbl
             except Exception as e:
-                err = tk.Label(tile, text=f"Failed to load\n{key}\n{e}", justify="center", width=25, height=8)
-                err.pack()
+                tk.Label(tile, text=f"Failed to load\n{key}\n{e}", justify="center", width=25, height=8).pack()
 
-            # Show both: dict key + filename (basename of the key)
-            # filename = os.path.basename(key)
-            filename = os.path.basename(dados_vistoria[key]) 
-            # text = f"Key: {key}\nFile: {filename}"
-            # text = f"{key}\n{filename}"
-            text = f"{key}"
-            name_lbl = tk.Label(
+            tk.Label(
                 tile,
-                text=text,
+                text=f"{key}",
                 wraplength=max(180, thumb_w),
                 justify="center",
                 cursor="hand2",
-                font=label_font,
-            )
-            name_lbl.pack(pady=(6, 0))
+                font=grid_label_font,
+            ).pack(pady=(6, 0))
 
-            _bind_click(tile, key)
+            _bind_tile_click(tile, key)
             for child in tile.winfo_children():
-                _bind_click(child, key)
+                _bind_tile_click(child, key)
 
     _build_grid()
 
-    # Optional: rescale thumbs once after first layout is stable (helps get correct canvas width)
+    # Refresh thumbs after layout settles (grid + slots)
     def _refresh_thumbnails_once():
-        thumb_w, thumb_h = _compute_thumb_size()
-        changed_any = False
+        # grid thumbs
+        thumb_w, thumb_h = _compute_grid_thumb_size()
         for key, lbl in img_labels.items():
             try:
                 thumb = _make_thumbnail(pil_cache[key], (thumb_w, thumb_h))
                 thumb_cache[key] = thumb
                 lbl.configure(image=thumb)
-                changed_any = True
             except Exception:
                 pass
-        if changed_any:
-            canvas.configure(scrollregion=canvas.bbox("all"))
 
-    root.after(80, _refresh_thumbnails_once)
+        # slot thumbs (recompute sizes now that slots_row has a real width)
+        for lab in SLOT_LABELS:
+            if slot_to_key[lab] is not None:
+                _update_slot_ui(lab)
+
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    root.after(120, _refresh_thumbnails_once)
+
+    # Also refresh slot thumbs if the window is resized (so previews stay big)
+    def _on_root_resize(_event=None):
+        for lab in SLOT_LABELS:
+            if slot_to_key[lab] is not None:
+                _update_slot_ui(lab)
+
+    root.bind("<Configure>", lambda e: root.after_idle(_on_root_resize))
 
     # --- Bottom actions ---
     bottom = tk.Frame(root)
     bottom.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
 
-    result: Dict[str, Any] = {"dados_vistoria": dados_vistoria, "selected_filenames": []}
+    result: dict[str, str] = {lab: "" for lab in SLOT_LABELS}
 
     def _confirm():
-        if len(selected) != 3:
-            messagebox.showinfo("Select 3 images", f"Please select exactly 3 images (currently {len(selected)}).")
+        if _assigned_count() != 3:
+            messagebox.showinfo("Select 3 images", f"Please assign exactly 3 images (currently {_assigned_count()}).")
             return
-        result["selected_filenames"] = selected.copy()
+
+        for lab in SLOT_LABELS:
+            key = slot_to_key[lab]
+            result[lab] = _filename_for_key(key) if key is not None else ""
         root.destroy()
 
     def _clear():
-        for k in list(selected):
-            _set_tile_selected_visual(k, False)
-        selected.clear()
-        _update_selected_label()
+        nonlocal active_slot
+        for lab in SLOT_LABELS:
+            slot_to_key[lab] = None
+        active_slot = None
+        _update_all_slots_ui()
 
     def _on_close():
-        # Return what is selected (possibly <3) if user closes.
-        result["selected_filenames"] = selected.copy()
+        for lab in SLOT_LABELS:
+            key = slot_to_key[lab]
+            result[lab] = _filename_for_key(key) if key is not None else ""
         root.destroy()
 
     tk.Button(bottom, text="Clear", command=_clear).pack(side=tk.LEFT)
@@ -314,7 +482,421 @@ def show_gui_for_labeling(
 
     root.protocol("WM_DELETE_WINDOW", _on_close)
 
-    _update_selected_label()
+    _update_all_slots_ui()
+    root.mainloop()
+    return result
+
+
+
+
+
+def show_gui_for_labeling_license_plate(
+    dados_vistoria: dict,
+    imgs_vistoria: dict[str, Image.Image],
+) -> dict[str, str]:
+    SLOT_LABELS = ["URL Placa LABELED"]
+    SLOT_COLORS = {"URL Placa LABELED": "#f1c40f"}  # yellow/gold (same as before)
+
+    if not imgs_vistoria:
+        return {lab: "" for lab in SLOT_LABELS}
+
+    root = tk.Tk()
+    root.title("Select license plate image")
+
+    # ---- Size window relative to screen ----
+    screen_w = root.winfo_screenwidth()
+    screen_h = root.winfo_screenheight()
+
+    win_w = max(900, int(screen_w * 0.90))
+    win_h = max(650, int(screen_h * 0.85))
+
+    x = max(0, (screen_w - win_w) // 2)
+    y = min(10, (screen_h - win_h) // 2)
+    root.geometry(f"{win_w}x{win_h}+{x}+{y}")
+
+    # --- State ---
+    slot_to_key: dict[str, str | None] = {SLOT_LABELS[0]: None}
+    active_slot: str | None = None
+
+    # keep PhotoImages alive
+    thumb_cache: dict[str, ImageTk.PhotoImage] = {}
+    slot_thumb_cache: dict[str, ImageTk.PhotoImage] = {}
+
+    tile_widgets: dict[str, tk.Frame] = {}
+    img_labels: dict[str, tk.Label] = {}
+
+    slot_frames: dict[str, tk.Frame] = {}
+    slot_img_labels: dict[str, tk.Label] = {}
+    slot_text_vars: dict[str, tk.StringVar] = {}
+
+    # --- Fonts ---
+    grid_label_font = tkfont.Font(root=root, size=11, weight="bold")
+    slot_title_font = tkfont.Font(root=root, size=11, weight="bold")
+    slot_filename_font = tkfont.Font(root=root, size=10, weight="normal")
+
+    # --- Top bar ---
+    top = tk.Frame(root)
+    top.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(10, 6))
+
+    info_var = tk.StringVar(value="Click the slot above, then click an image below to assign it.")
+    tk.Label(top, textvariable=info_var, anchor="w").pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    assigned_var = tk.StringVar(value="Assigned (0/1)")
+    tk.Label(top, textvariable=assigned_var, anchor="e").pack(side=tk.RIGHT)
+
+    # --- Slot row (FIRST ROW) ---
+    slots_row = tk.Frame(root)
+    slots_row.pack(side=tk.TOP, fill=tk.X, padx=10, pady=(0, 10))
+
+    # --- Scrollable area ---
+    container = tk.Frame(root)
+    container.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
+
+    canvas = tk.Canvas(container, highlightthickness=0)
+    vsb = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=vsb.set)
+
+    vsb.pack(side=tk.RIGHT, fill=tk.Y)
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    grid_frame = tk.Frame(canvas)
+    grid_window = canvas.create_window((0, 0), window=grid_frame, anchor="nw")
+
+    def _on_frame_configure(_event=None):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    def _on_canvas_configure(event):
+        canvas.itemconfigure(grid_window, width=event.width)
+
+    grid_frame.bind("<Configure>", _on_frame_configure)
+    canvas.bind("<Configure>", _on_canvas_configure)
+
+    # Mouse wheel
+    def _on_mousewheel(event):
+        if event.delta:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        else:
+            if event.num == 4:
+                canvas.yview_scroll(-3, "units")
+            elif event.num == 5:
+                canvas.yview_scroll(3, "units")
+
+    root.bind_all("<MouseWheel>", _on_mousewheel)
+    root.bind_all("<Button-4>", _on_mousewheel)
+    root.bind_all("<Button-5>", _on_mousewheel)
+
+    # --- Grid layout ---
+    COLS = 4
+    PADX = 10
+    PADY = 10
+
+    keys = list(imgs_vistoria.keys())
+    pil_cache: dict[str, Image.Image] = {k: imgs_vistoria[k] for k in keys}
+
+    def _make_thumbnail(img: Image.Image, max_size: tuple[int, int]) -> ImageTk.PhotoImage:
+        im = img.copy()
+        if im.mode not in ("RGB", "RGBA"):
+            im = im.convert("RGB")
+        im.thumbnail(max_size, Image.LANCZOS)
+        return ImageTk.PhotoImage(im)
+
+    def _filename_for_key(key: str) -> str:
+        try:
+            return os.path.basename(dados_vistoria[key])
+        except Exception:
+            return os.path.basename(str(key))
+
+    def _assigned_count() -> int:
+        return 1 if slot_to_key[SLOT_LABELS[0]] is not None else 0
+
+    def _update_assigned_label():
+        assigned_var.set(f"Assigned ({_assigned_count()}/1)")
+
+    # --- Compute thumbnail sizes (same logic style as before) ---
+    def _compute_grid_thumb_size() -> tuple[int, int]:
+        cw = canvas.winfo_width()
+        if cw <= 2:
+            cw = win_w - 40
+
+        scrollbar_w = 18
+        available = max(300, cw - scrollbar_w)
+        total_pad = COLS * (2 * PADX) + 10
+        tile_w = max(160, int((available - total_pad) / COLS))
+
+        thumb_w = tile_w
+        # thumb_h = int(tile_w * 0.72)
+        thumb_h = int(tile_w * 0.5)
+        return thumb_w, thumb_h
+
+    def _compute_slot_thumb_size() -> tuple[int, int]:
+        # With 1 slot, use nearly the full available width
+        sw = slots_row.winfo_width()
+        if sw <= 2:
+            sw = win_w - 40
+
+        # subtract outer padding + internal margins
+        slot_frame_w = max(420, sw - 40)
+        thumb_w = max(320, slot_frame_w - 30)
+        # thumb_h = int(thumb_w * 0.72)
+        thumb_h = int(thumb_w * 0.08)
+        return thumb_w, thumb_h
+
+    # --- Slot visuals ---
+    def _set_slot_active_visual(label: str, is_active: bool):
+        frame = slot_frames[label]
+        color = SLOT_COLORS[label]
+        frame.configure(
+            highlightbackground=color,
+            highlightcolor=color,
+            highlightthickness=4 if is_active else 2,
+        )
+
+    def _refresh_slot_active_visual():
+        _set_slot_active_visual(SLOT_LABELS[0], active_slot == SLOT_LABELS[0])
+
+    # --- Tile visuals based on assignment ---
+    def _highlight_tiles():
+        # Reset all tiles
+        for _, tile in tile_widgets.items():
+            tile.configure(
+                highlightthickness=1,
+                highlightbackground="#b0b0b0",
+                highlightcolor="#b0b0b0",
+                bg=tile.master.cget("bg"),
+            )
+
+        # Color assigned tile
+        assigned_key = slot_to_key[SLOT_LABELS[0]]
+        if assigned_key is not None:
+            tile = tile_widgets.get(assigned_key)
+            if tile:
+                color = SLOT_COLORS[SLOT_LABELS[0]]
+                tile.configure(
+                    highlightthickness=4,
+                    highlightbackground=color,
+                    highlightcolor=color,
+                    bg="#eef6ff",
+                )
+
+    # --- Slot UI update ---
+    def _update_slot_ui():
+        lab = SLOT_LABELS[0]
+        key = slot_to_key[lab]
+        if key is None:
+            slot_img_labels[lab].configure(image="", text="(click to choose)", compound="center")
+            slot_text_vars[lab].set("")
+            slot_thumb_cache.pop(lab, None)
+            return
+
+        try:
+            tw, th = _compute_slot_thumb_size()
+            thumb = _make_thumbnail(pil_cache[key], (tw, th))
+            slot_thumb_cache[lab] = thumb
+            slot_img_labels[lab].configure(image=thumb, text="", compound="center")
+        except Exception:
+            slot_img_labels[lab].configure(image="", text="(preview failed)", compound="center")
+            slot_thumb_cache.pop(lab, None)
+
+        slot_text_vars[lab].set(_filename_for_key(key))
+
+    def _refresh_ui():
+        _update_slot_ui()
+        _update_assigned_label()
+        _highlight_tiles()
+        _refresh_slot_active_visual()
+
+    # --- Actions ---
+    def _on_slot_click():
+        nonlocal active_slot
+        lab = SLOT_LABELS[0]
+        active_slot = None if active_slot == lab else lab
+        _refresh_slot_active_visual()
+
+    def _assign_key(key: str):
+        lab = SLOT_LABELS[0]
+        slot_to_key[lab] = key
+        _update_slot_ui()
+        _update_assigned_label()
+        _highlight_tiles()
+
+    def _unassign():
+        lab = SLOT_LABELS[0]
+        slot_to_key[lab] = None
+        _update_slot_ui()
+        _update_assigned_label()
+        _highlight_tiles()
+
+    def _on_tile_click(key: str):
+        nonlocal active_slot
+        lab = SLOT_LABELS[0]
+
+        # If slot not active, we still allow assigning (convenience)
+        if active_slot is None:
+            active_slot = lab
+            _refresh_slot_active_visual()
+
+        # If clicking the assigned tile while active => unassign
+        if slot_to_key[lab] == key and active_slot == lab:
+            _unassign()
+            return
+
+        _assign_key(key)
+
+    # --- Build slot row ---
+    def _build_slot_row():
+        lab = SLOT_LABELS[0]
+        frame = tk.Frame(
+            slots_row,
+            bd=0,
+            relief="flat",
+            padx=8,
+            pady=8,
+            highlightthickness=2,
+            highlightbackground=SLOT_COLORS[lab],
+            highlightcolor=SLOT_COLORS[lab],
+        )
+        frame.grid(row=0, column=0, padx=10, pady=0, sticky="nsew")
+        slots_row.grid_columnconfigure(0, weight=1)
+
+        slot_frames[lab] = frame
+
+        tk.Label(frame, text=lab, font=slot_title_font, anchor="center").pack(fill=tk.X)
+
+        img_lbl = tk.Label(
+            frame,
+            text="(click to choose)",
+            bd=0,
+            relief="flat",
+            cursor="hand2",
+            compound="center",
+        )
+        img_lbl.pack(fill=tk.BOTH, expand=True, pady=(6, 4))
+        slot_img_labels[lab] = img_lbl
+
+        fn_var = tk.StringVar(value="")
+        slot_text_vars[lab] = fn_var
+        tk.Label(frame, textvariable=fn_var, font=slot_filename_font, anchor="center").pack(fill=tk.X)
+
+        # click anywhere in slot to activate
+        def bind_all(widget):
+            widget.bind("<Button-1>", lambda _e: _on_slot_click())
+
+        bind_all(frame)
+        for child in frame.winfo_children():
+            bind_all(child)
+
+    _build_slot_row()
+
+    # --- Build grid ---
+    def _bind_tile_click(widget, _key: str):
+        widget.bind("<Button-1>", lambda _e: _on_tile_click(_key))
+
+    def _build_grid():
+        thumb_w, thumb_h = _compute_grid_thumb_size()
+
+        for idx, key in enumerate(keys):
+            r = idx // COLS
+            c = idx % COLS
+
+            tile = tk.Frame(
+                grid_frame,
+                bd=0,
+                relief="flat",
+                highlightthickness=1,
+                highlightbackground="#b0b0b0",
+                highlightcolor="#b0b0b0",
+            )
+            tile.grid(row=r, column=c, padx=PADX, pady=PADY, sticky="n")
+            tile_widgets[key] = tile
+
+            try:
+                thumb = _make_thumbnail(pil_cache[key], (thumb_w, thumb_h))
+                thumb_cache[key] = thumb
+                img_lbl = tk.Label(tile, image=thumb, cursor="hand2")
+                img_lbl.pack()
+                img_labels[key] = img_lbl
+            except Exception as e:
+                tk.Label(tile, text=f"Failed to load\n{key}\n{e}", justify="center", width=25, height=8).pack()
+
+            tk.Label(
+                tile,
+                text=f"{key}",
+                wraplength=max(180, thumb_w),
+                justify="center",
+                cursor="hand2",
+                font=grid_label_font,
+            ).pack(pady=(6, 0))
+
+            _bind_tile_click(tile, key)
+            for child in tile.winfo_children():
+                _bind_tile_click(child, key)
+
+    _build_grid()
+
+    # Refresh thumbs after layout settles (grid + slot)
+    def _refresh_thumbnails_once():
+        # grid thumbs
+        thumb_w, thumb_h = _compute_grid_thumb_size()
+        for key, lbl in img_labels.items():
+            try:
+                thumb = _make_thumbnail(pil_cache[key], (thumb_w, thumb_h))
+                thumb_cache[key] = thumb
+                lbl.configure(image=thumb)
+            except Exception:
+                pass
+
+        # slot thumb (after slots_row has a real width)
+        if slot_to_key[SLOT_LABELS[0]] is not None:
+            _update_slot_ui()
+
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    root.after(120, _refresh_thumbnails_once)
+
+    # Refresh slot thumbs on resize to keep it big
+    def _on_root_resize(_event=None):
+        if slot_to_key[SLOT_LABELS[0]] is not None:
+            _update_slot_ui()
+
+    root.bind("<Configure>", lambda e: root.after_idle(_on_root_resize))
+
+    # --- Bottom actions ---
+    bottom = tk.Frame(root)
+    bottom.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
+
+    result: dict[str, str] = {SLOT_LABELS[0]: ""}
+
+    def _confirm():
+        lab = SLOT_LABELS[0]
+        if slot_to_key[lab] is None:
+            messagebox.showinfo("Select 1 image", "Please assign exactly 1 image.")
+            return
+        result[lab] = _filename_for_key(slot_to_key[lab])  # type: ignore[arg-type]
+        root.destroy()
+
+    def _clear():
+        nonlocal active_slot
+        slot_to_key[SLOT_LABELS[0]] = None
+        active_slot = None
+        _refresh_ui()
+
+    '''
+    def _on_close():
+        lab = SLOT_LABELS[0]
+        key = slot_to_key[lab]
+        result[lab] = _filename_for_key(key) if key is not None else ""
+        root.destroy()
+    '''
+    def _on_close():
+        root.destroy()
+        sys.exit(0)
+
+    tk.Button(bottom, text="Clear", command=_clear).pack(side=tk.LEFT)
+    tk.Button(bottom, text="Confirm (1)", command=_confirm).pack(side=tk.RIGHT)
+
+    root.protocol("WM_DELETE_WINDOW", _on_close)
+
+    _refresh_ui()
     root.mainloop()
     return result
 
@@ -366,7 +948,9 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     raise FileNotFoundError(f"Image file not found: {img_path}")
 
-        show_gui_for_labeling(dados_vistoria_corrected, imgs_vistoria)
+        # dict_selected_labeled_imgs = show_gui_for_labeling_licenseplate_chassi_engine(dados_vistoria_corrected, imgs_vistoria)
+        dict_selected_labeled_imgs = show_gui_for_labeling_license_plate(dados_vistoria_corrected, imgs_vistoria)
+        print("    dict_selected_labeled_imgs:", dict_selected_labeled_imgs)
 
         print("-----------")
         # sys.exit(0)
