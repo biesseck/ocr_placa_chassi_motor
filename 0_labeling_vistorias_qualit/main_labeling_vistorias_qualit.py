@@ -28,9 +28,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def make_default_global_config(path_config_global = "config_global.json") -> None:
     default_config = {
-        "input":           "",
-        "output":          "",
-        "labeled_folders": []
+        "input":                "",
+        "output":               "",
+        "start_labeling_index": 0,
+        "labeled_folders":      []
     }
     save_json(default_config, path_config_global)
 
@@ -970,7 +971,7 @@ def main(argv: list[str] | None = None) -> int:
     # Main loop
     for idx_vistoria_subdir, vistoria_subdir in enumerate(all_vistorias_subdirs):
         print("-----------")
-        if idx_vistoria_subdir > idx_current_vistoria:
+        if idx_vistoria_subdir >= dict_global_config["start_labeling_index"] and idx_vistoria_subdir > idx_current_vistoria:
             print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Processing vistoria subdir: {vistoria_subdir}")
 
             json_path = os.path.join(vistoria_subdir, "dados_vistoria.json").replace('\\','/')
