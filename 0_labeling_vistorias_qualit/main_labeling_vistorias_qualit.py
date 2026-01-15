@@ -23,8 +23,6 @@ __version__ = "0.1.0"
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input", type=str, required=True,  default="D:/Datasets/veiculos_vistoria_laudo_chassi_v1_DADOS_BRUTOS/qualit/vistorias_qualit/vistorias_download")
-    parser.add_argument("-o", "--output", type=str, required=True, default="D:/Datasets/veiculos_vistoria_laudo_chassi_v2_LABELED/qualit_LABELED/vistorias_qualit_LABELED/vistorias_download_LABELED")
     return parser.parse_args(argv)
 
 
@@ -947,18 +945,16 @@ def main(argv: list[str] | None = None) -> int:
         dict_global_config["input"] = select_folder("Select INPUT folder")
         save_json(dict_global_config, path_config_global)
     if not os.path.isdir(dict_global_config["output"]):
-        dict_global_config["output"] = select_folder("Select OUTPUT folder")
+        dict_global_config["output"] = '/'.join(dict_global_config["input"].split('/')[:-3])
+        dict_global_config["output"] = dict_global_config["output"].replace('v1','v2').replace('DADOS_BRUTOS','LABELED')
+        dict_global_config["output"] = os.path.join(dict_global_config["output"], '/'.join([folder+"_LABELED" for folder in dict_global_config["input"].split('/')[-3:]]))
+        dict_global_config["output"] = dict_global_config["output"].replace('\\','/')
+        os.makedirs(dict_global_config["output"], exist_ok=True)
         save_json(dict_global_config, path_config_global)
 
 
-    if not os.path.isdir(args.input):
-        print(f"Error: input folder '{args.input}' does not exist", file=sys.stderr)
-        return 2
-    os.makedirs(args.output, exist_ok=True)
-
-
-    print(f"Scanning input folder: {args.input}")
-    all_vistorias_subdirs = load_all_subdirs(args.input)
+    print(f"Scanning input folder: {dict_global_config['input']}")
+    all_vistorias_subdirs = load_all_subdirs(dict_global_config["input"])
     print(f"    Found {len(all_vistorias_subdirs)} vistorias in input folder")
 
 
