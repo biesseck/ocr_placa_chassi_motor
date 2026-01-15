@@ -921,6 +921,7 @@ def show_gui_for_labeling_license_plate(
 
 
 
+
 def select_folder(title="Select a folder"):
     root = tk.Tk()
     root.withdraw()          # hide the main window
