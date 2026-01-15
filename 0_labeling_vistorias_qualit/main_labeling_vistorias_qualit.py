@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import json
 from PIL import Image
+from datetime import datetime
 
 import os
 import tkinter as tk
@@ -29,9 +30,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def make_default_global_config(path_config_global = "config_global.json") -> None:
     default_config = {
-        "input":            "",
-        "output":           "",
-        "current_vistoria": ""
+        "input":           "",
+        "output":          "",
+        "labeled_folders": []
     }
     save_json(default_config, path_config_global)
 
@@ -955,22 +956,24 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     os.makedirs(args.output, exist_ok=True)
 
-    
+
     print(f"Scanning input folder: {args.input}")
     all_vistorias_subdirs = load_all_subdirs(args.input)
     print(f"    Found {len(all_vistorias_subdirs)} vistorias in input folder")
 
 
     # Find index of current_vistoria to resume from there
-    idx_current_vistoria = 0
-    for idx_vistoria_subdir, vistoria_subdir in enumerate(all_vistorias_subdirs):
-        if dict_global_config["current_vistoria"] in vistoria_subdir:
-            idx_current_vistoria = idx_vistoria_subdir
-            break
+    idx_current_vistoria = -1
+    if len(dict_global_config["labeled_folders"]) > 0:
+        for idx_vistoria_subdir, vistoria_subdir in enumerate(all_vistorias_subdirs):
+            if list(dict_global_config["labeled_folders"][-1].keys())[-1] in vistoria_subdir:
+                idx_current_vistoria = idx_vistoria_subdir
+                break
 
 
     # Main loop
     for idx_vistoria_subdir, vistoria_subdir in enumerate(all_vistorias_subdirs):
+        print("-----------")
         if idx_vistoria_subdir > idx_current_vistoria:
             print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Processing vistoria subdir: {vistoria_subdir}")
 
@@ -1003,14 +1006,21 @@ def main(argv: list[str] | None = None) -> int:
             # dict_selected_labeled_imgs = show_gui_for_labeling_licenseplate_chassi_engine(dados_vistoria_corrected, imgs_vistoria)
             dict_selected_labeled_imgs = show_gui_for_labeling_license_plate(dados_vistoria_corrected, imgs_vistoria)
             print("        dict_selected_labeled_imgs:", dict_selected_labeled_imgs)
+            dados_vistoria_corrected.update(dict_selected_labeled_imgs)
+            print("        dados_vistoria_corrected:", dados_vistoria_corrected)
 
-            dict_global_config["current_vistoria"] = os.path.basename(vistoria_subdir)
+
+            dict_global_config["labeled_folders"].append({os.path.basename(vistoria_subdir): str(datetime.now())})
+
+
+            # TODO: Save results to output folder
+
+
             save_json(dict_global_config, path_config_global)
 
         else:
             print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Skipping vistoria subdir: {vistoria_subdir}")
 
-        print("-----------")
         # sys.exit(0)
 
 
