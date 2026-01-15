@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 import argparse
+import re
 import sys
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ from PIL import Image
 
 import os
 import tkinter as tk
+from tkinter import filedialog
 from tkinter import messagebox
 import tkinter.font as tkfont
 from typing import Any
@@ -23,6 +25,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("-i", "--input", type=str, required=True,  default="D:/Datasets/veiculos_vistoria_laudo_chassi_v1_DADOS_BRUTOS/qualit/vistorias_qualit/vistorias_download")
     parser.add_argument("-o", "--output", type=str, required=True, default="D:/Datasets/veiculos_vistoria_laudo_chassi_v2_LABELED/qualit_LABELED/vistorias_qualit_LABELED/vistorias_download_LABELED")
     return parser.parse_args(argv)
+
+
+def make_default_global_config(path_config_global = "config_global.json") -> None:
+    default_config = {
+        "input":            "",
+        "output":           "",
+        "current_vistoria": ""
+    }
+    save_json(default_config, path_config_global)
 
 
 def load_json(path: str) -> dict:
@@ -44,8 +55,14 @@ def save_json(obj: dict, path: str, indent: int = 4) -> None:
     tmp.replace(path)
 
 
+def natural_sort_key(path):
+    s = str(path)
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
+
 def load_all_subdirs(input_folder: str) -> list[str]:
     subdirs = [os.path.join(input_folder, name).replace('\\','/') for name in os.listdir(input_folder) if os.path.isdir(os.path.join(input_folder, name))]
+    subdirs.sort(key=natural_sort_key)
     return subdirs
 
 
@@ -904,13 +921,36 @@ def show_gui_for_labeling_license_plate(
 
 
 
+def select_folder(title="Select a folder"):
+    root = tk.Tk()
+    root.withdraw()          # hide the main window
+    root.attributes("-topmost", True)  # bring dialog to front (optional)
+    folder = filedialog.askdirectory(title=title)
+    root.destroy()
+    return folder
+
+
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
+
+    path_config_global = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_global.json")
+    if not os.path.isfile(path_config_global):
+        make_default_global_config(path_config_global)
+    dict_global_config = load_json(path_config_global)
+
+    if not os.path.isdir(dict_global_config["input"]):
+        dict_global_config["input"] = select_folder("Select INPUT folder")
+        save_json(dict_global_config, path_config_global)
+    if not os.path.isdir(dict_global_config["output"]):
+        dict_global_config["output"] = select_folder("Select OUTPUT folder")
+        save_json(dict_global_config, path_config_global)
+
+
     if not os.path.isdir(args.input):
-        print(f"Error: input file '{args.input}' does not exist", file=sys.stderr)
+        print(f"Error: input folder '{args.input}' does not exist", file=sys.stderr)
         return 2
     os.makedirs(args.output, exist_ok=True)
 
@@ -920,42 +960,58 @@ def main(argv: list[str] | None = None) -> int:
     print(f"    Found {len(all_vistorias_subdirs)} vistorias in input folder")
 
 
+    # Find index of current_vistoria to resume from there
+    idx_current_vistoria = 0
+    for idx_vistoria_subdir, vistoria_subdir in enumerate(all_vistorias_subdirs):
+        if dict_global_config["current_vistoria"] in vistoria_subdir:
+            idx_current_vistoria = idx_vistoria_subdir
+            break
+
+
     # Main loop
     for idx_vistoria_subdir, vistoria_subdir in enumerate(all_vistorias_subdirs):
-        print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Processing vistoria subdir: {vistoria_subdir}")
+        if idx_vistoria_subdir > idx_current_vistoria:
+            print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Processing vistoria subdir: {vistoria_subdir}")
 
-        json_path = os.path.join(vistoria_subdir, "dados_vistoria.json").replace('\\','/')
-        print(f"    Loading JSON data from: {json_path}")
-        dados_vistoria_orig = load_json(json_path)
-        dados_vistoria_corrected = {}
-        for idx_key_vistoria, key_vistoria in enumerate(dados_vistoria_orig.keys()):
-            if key_vistoria:
+            json_path = os.path.join(vistoria_subdir, "dados_vistoria.json").replace('\\','/')
+            print(f"    Loading JSON data from: {json_path}")
+            dados_vistoria_orig = load_json(json_path)
+            dados_vistoria_corrected = {}
+            for idx_key_vistoria, key_vistoria in enumerate(dados_vistoria_orig.keys()):
+                if key_vistoria:
+                    if key_vistoria.startswith("URL "):
+                        dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria].split('/')[-1]
+                    else:
+                        dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria]
+
+            images_folder = os.path.join(vistoria_subdir, "imgs").replace('\\','/')
+            imgs_vistoria = {}
+            print(f"    Loading images of vistoria:")
+            for idx_key_vistoria, key_vistoria in enumerate(dados_vistoria_corrected.keys()):
                 if key_vistoria.startswith("URL "):
-                    dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria].split('/')[-1]
-                else:
-                    dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria]
+                    img_filename = dados_vistoria_corrected[key_vistoria]
+                    print(f"        {key_vistoria}: {img_filename}")
+                    img_path = os.path.join(images_folder, img_filename).replace('\\','/')
+                    if os.path.isfile(img_path):
+                        # imgs_vistoria[dados_vistoria_corrected[key_vistoria]] = Image.open(img_path)
+                        imgs_vistoria[key_vistoria] = Image.open(img_path)
+                    else:
+                        raise FileNotFoundError(f"Image file not found: {img_path}")
 
-        images_folder = os.path.join(vistoria_subdir, "imgs").replace('\\','/')
-        imgs_vistoria = {}
-        print(f"    Loading images of vistoria:")
-        for idx_key_vistoria, key_vistoria in enumerate(dados_vistoria_corrected.keys()):
-            if key_vistoria.startswith("URL "):
-                img_filename = dados_vistoria_corrected[key_vistoria]
-                print(f"        {key_vistoria}: {img_filename}")
-                img_path = os.path.join(images_folder, img_filename).replace('\\','/')
-                if os.path.isfile(img_path):
-                    # imgs_vistoria[dados_vistoria_corrected[key_vistoria]] = Image.open(img_path)
-                    imgs_vistoria[key_vistoria] = Image.open(img_path)
-                else:
-                    raise FileNotFoundError(f"Image file not found: {img_path}")
+            print("    Launching GUI for labeling...")
+            # dict_selected_labeled_imgs = show_gui_for_labeling_licenseplate_chassi_engine(dados_vistoria_corrected, imgs_vistoria)
+            dict_selected_labeled_imgs = show_gui_for_labeling_license_plate(dados_vistoria_corrected, imgs_vistoria)
+            print("        dict_selected_labeled_imgs:", dict_selected_labeled_imgs)
 
-        print("    Launching GUI for labeling...")
-        # dict_selected_labeled_imgs = show_gui_for_labeling_licenseplate_chassi_engine(dados_vistoria_corrected, imgs_vistoria)
-        dict_selected_labeled_imgs = show_gui_for_labeling_license_plate(dados_vistoria_corrected, imgs_vistoria)
-        print("        dict_selected_labeled_imgs:", dict_selected_labeled_imgs)
+            dict_global_config["current_vistoria"] = os.path.basename(vistoria_subdir)
+            save_json(dict_global_config, path_config_global)
+
+        else:
+            print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Skipping vistoria subdir: {vistoria_subdir}")
 
         print("-----------")
         # sys.exit(0)
+
 
 
     print("\nFinished processing.")
