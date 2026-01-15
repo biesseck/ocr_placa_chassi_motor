@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 from PIL import Image
 from datetime import datetime
+import shutil
 
 import os
 import tkinter as tk
@@ -15,7 +16,7 @@ from tkinter import filedialog
 from tkinter import messagebox
 import tkinter.font as tkfont
 from typing import Any
-from PIL import Image, ImageTk
+from PIL import ImageTk
     
 
 __version__ = "0.1.0"
@@ -23,6 +24,7 @@ __version__ = "0.1.0"
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", type=str, default="labeling", choices=["labeling", "check"], help="Mode of operation.")
     return parser.parse_args(argv)
 
 
@@ -510,6 +512,7 @@ def show_gui_for_labeling_licenseplate_chassi_engine(
 def show_gui_for_labeling_license_plate(
     dados_vistoria: dict,
     imgs_vistoria: dict[str, Image.Image],
+    title: str = "Select license plate image",
 ) -> dict[str, str]:
     SLOT_LABELS = ["URL Placa LABELED"]
     SLOT_COLORS = {"URL Placa LABELED": "#f1c40f"}  # yellow/gold (same as before)
@@ -518,7 +521,7 @@ def show_gui_for_labeling_license_plate(
         return {lab: "" for lab in SLOT_LABELS}
 
     root = tk.Tk()
-    root.title("Select license plate image")
+    root.title(title)
 
     # ---- Size window relative to screen ----
     screen_w = root.winfo_screenwidth()
@@ -1002,20 +1005,32 @@ def main(argv: list[str] | None = None) -> int:
                         else:
                             raise FileNotFoundError(f"Image file not found: {img_path}")
 
+
+                # Launch GUI for labeling
                 print("    Launching GUI for labeling...")
                 # dict_selected_labeled_imgs = show_gui_for_labeling_licenseplate_chassi_engine(dados_vistoria_corrected, imgs_vistoria)
-                dict_selected_labeled_imgs = show_gui_for_labeling_license_plate(dados_vistoria_corrected, imgs_vistoria)
+                dict_selected_labeled_imgs = show_gui_for_labeling_license_plate(dados_vistoria_corrected,
+                                                                                 imgs_vistoria,
+                                                                                 title=f"{os.path.basename(vistoria_subdir)}   -   Select license plate image")
                 print("        dict_selected_labeled_imgs:", dict_selected_labeled_imgs)
                 dados_vistoria_corrected.update(dict_selected_labeled_imgs)
                 print("        dados_vistoria_corrected:", dados_vistoria_corrected)
 
 
+                # Save results to output folder
+                path_output_vistoria = os.path.join(dict_global_config["output"], os.path.basename(vistoria_subdir)).replace('\\','/')
+                os.makedirs(path_output_vistoria, exist_ok=True)
+                print(f"    Saving output labeled JSON data to: {path_output_vistoria}")
+                json_output_path = os.path.join(path_output_vistoria, "dados_vistoria_LABELED.json").replace('\\','/')
+                save_json(dados_vistoria_corrected, json_output_path)
+                imgs_input_folder  = os.path.join(vistoria_subdir, "imgs").replace('\\','/')
+                imgs_output_folder = os.path.join(path_output_vistoria, "imgs").replace('\\','/')
+                print(f"    Copying output images to: {imgs_output_folder}")
+                shutil.copytree(imgs_input_folder, imgs_output_folder)
+
+
+                # Save labeling history
                 dict_global_config["labeled_folders"].append({os.path.basename(vistoria_subdir): str(datetime.now())})
-
-
-                # TODO: Save results to output folder
-
-
                 save_json(dict_global_config, path_config_global)
 
         else:
