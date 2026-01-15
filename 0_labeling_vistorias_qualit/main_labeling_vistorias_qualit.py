@@ -38,6 +38,12 @@ def make_default_global_config(path_config_global = "config_global.json") -> Non
     save_json(default_config, path_config_global)
 
 
+def app_dir():
+    if getattr(sys, "frozen", False):    # If running as a PyInstaller-built exe
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))    # If running as a normal .py
+    
+
 def load_json(path: str) -> dict:
     path = Path(path)
     if not path.exists():
@@ -940,13 +946,18 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
 
-    path_config_global = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_global.json")
+    # path_config_global = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config_global.json").replace('\\','/')
+    path_config_global = os.path.join(app_dir(), "config_global.json").replace('\\','/')
     if not os.path.isfile(path_config_global):
+        print(f"Creating default global config file at: {path_config_global}")
         make_default_global_config(path_config_global)
+    print(f"Loading default global config file: {path_config_global}")
     dict_global_config = load_json(path_config_global)
 
     if not os.path.isdir(dict_global_config["input"]):
+        print(f"Selecting input folder...")
         dict_global_config["input"] = select_folder("Select INPUT folder")
+        print(f"    Selected input folder: {dict_global_config['input']}")
         save_json(dict_global_config, path_config_global)
     if not os.path.isdir(dict_global_config["output"]):
         dict_global_config["output"] = '/'.join(dict_global_config["input"].split('/')[:-3])
@@ -1026,7 +1037,7 @@ def main(argv: list[str] | None = None) -> int:
                 imgs_input_folder  = os.path.join(vistoria_subdir, "imgs").replace('\\','/')
                 imgs_output_folder = os.path.join(path_output_vistoria, "imgs").replace('\\','/')
                 print(f"    Copying output images to: {imgs_output_folder}")
-                shutil.copytree(imgs_input_folder, imgs_output_folder)
+                shutil.copytree(imgs_input_folder, imgs_output_folder, dirs_exist_ok=True)
 
 
                 # Save labeling history
