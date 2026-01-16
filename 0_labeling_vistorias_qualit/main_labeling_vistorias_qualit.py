@@ -989,6 +989,7 @@ def main(argv: list[str] | None = None) -> int:
     for idx_vistoria_subdir, vistoria_subdir in enumerate(all_vistorias_subdirs):
         print("-----------")
         if idx_vistoria_subdir >= dict_global_config["start_labeling_index"] and idx_vistoria_subdir > idx_current_vistoria:
+            print(f"Num Placas Anotadas: {len(dict_global_config['labeled_folders'])}")
             print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Processing vistoria subdir: {vistoria_subdir}")
 
 
