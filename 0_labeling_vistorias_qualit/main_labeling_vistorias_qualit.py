@@ -900,26 +900,26 @@ def show_gui_for_labeling_license_plate(
         result[lab] = _filename_for_key(slot_to_key[lab])  # type: ignore[arg-type]
         root.destroy()
 
+    def _skip():
+        lab = SLOT_LABELS[0]
+        result[lab] = None
+        _refresh_ui()
+        root.destroy()
+
     def _clear():
         nonlocal active_slot
         slot_to_key[SLOT_LABELS[0]] = None
         active_slot = None
         _refresh_ui()
 
-    '''
-    def _on_close():
-        lab = SLOT_LABELS[0]
-        key = slot_to_key[lab]
-        result[lab] = _filename_for_key(key) if key is not None else ""
-        root.destroy()
-    '''
     def _on_close():
         root.destroy()
         print("        User closed the window. Exiting program.")
         sys.exit(0)
 
-    tk.Button(bottom, text="Clear", command=_clear).pack(side=tk.LEFT)
-    tk.Button(bottom, text="Confirm (1)", command=_confirm).pack(side=tk.RIGHT)
+    tk.Button(bottom, text=" Clear ", command=_clear).pack(side=tk.LEFT)
+    tk.Button(bottom, text=" Sem Placa ", command=_skip).pack(side=tk.LEFT)
+    tk.Button(bottom, text=" Confirm (1) ", command=_confirm).pack(side=tk.RIGHT)
 
     root.protocol("WM_DELETE_WINDOW", _on_close)
 
