@@ -18,7 +18,7 @@ pip install -r requirements.txt
 
 ## Running
 ```
-.\main_labeling_vistorias_qualit.bat
+./main_labeling_vistorias_qualit.bat
 ```
 
 or
