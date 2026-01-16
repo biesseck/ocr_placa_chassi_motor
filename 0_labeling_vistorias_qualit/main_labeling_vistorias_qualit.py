@@ -957,7 +957,10 @@ def main(argv: list[str] | None = None) -> int:
     if not os.path.isdir(dict_global_config["input"]):
         print(f"Selecting input folder...")
         dict_global_config["input"] = select_folder("Select INPUT folder")
-        print(f"    Selected input folder: {dict_global_config['input']}")
+        print(f"    Selected input folder: \'{dict_global_config['input']}\'")
+        if not os.path.isdir(dict_global_config["input"]):
+            print("    No input folder selected. Exiting program.")
+            return 0
         save_json(dict_global_config, path_config_global)
     if not os.path.isdir(dict_global_config["output"]):
         dict_global_config["output"] = '/'.join(dict_global_config["input"].split('/')[:-3])
