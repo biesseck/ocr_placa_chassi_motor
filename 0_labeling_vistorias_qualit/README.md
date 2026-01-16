@@ -2,6 +2,7 @@
 ![OK](assets/screenshot1.png)
 
 ## Prerequisite
+- Git: https://github.com/git-for-windows/git/releases/download/v2.52.0.windows.1/Git-2.52.0-64-bit.exe
 - Python 3.9: https://www.python.org/ftp/python/3.9.9/python-3.9.9-amd64.exe
 
 ## Download
