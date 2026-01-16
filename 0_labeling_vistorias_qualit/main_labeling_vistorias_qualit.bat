@@ -1,33 +1,35 @@
-@echo off
-setlocal
+@echo on
+setlocal EnableExtensions
 
 REM Move to the directory where this .bat file is located
 cd /d "%~dp0"
 
+set "CONDA_ENV=labeling_vistorias_qualit"
+set "USE_CONDA="
+
 REM Check if Conda is available
-where conda >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: Conda is not installed or not in PATH.
-    echo Please install Anaconda/Miniconda or add it to PATH.
-    pause
-    exit /b 1
+where conda >nul 2>&1 && set "USE_CONDA=1"
+
+REM Try to init conda (only if found)
+if defined USE_CONDA (
+    call conda.bat >nul 2>&1
+    if errorlevel 1 set "USE_CONDA="
 )
 
-REM Initialize Conda for batch usage (needed for activation)
-call conda.bat >nul 2>&1
-
-REM Activate the "labeling_vistorias_qualit" environment
-call conda activate labeling_vistorias_qualit
-if errorlevel 1 (
-    echo ERROR: Conda environment "labeling_vistorias_qualit" not found.
-    echo Available environments:
-    conda env list
-    pause
-    exit /b 1
+REM Try to activate env (only if init worked)
+if defined USE_CONDA (
+    call conda activate "%CONDA_ENV%" >nul 2>&1
+    if errorlevel 1 set "USE_CONDA="
 )
 
-REM Run the Python script
-python .\main_labeling_vistorias_qualit.py
+if defined USE_CONDA (
+    echo INFO: Using Conda env "%CONDA_ENV%".
+) else (
+    echo INFO: Conda/env not available. Using system Python...
+)
 
-REM pause
-endlocal
+REM Run the Python script (quoted path to avoid parsing issues)
+python "%~dp0main_labeling_vistorias_qualit.py"
+
+set "RC=%ERRORLEVEL%"
+endlocal & exit /b %RC%
