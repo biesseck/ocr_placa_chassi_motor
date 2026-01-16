@@ -974,6 +974,7 @@ def main(argv: list[str] | None = None) -> int:
         if idx_vistoria_subdir >= dict_global_config["start_labeling_index"] and idx_vistoria_subdir > idx_current_vistoria:
             print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Processing vistoria subdir: {vistoria_subdir}")
 
+
             json_path = os.path.join(vistoria_subdir, "dados_vistoria.json").replace('\\','/')
             print(f"    Loading JSON data from: {json_path}")
             dados_vistoria_orig = load_json(json_path)
@@ -985,35 +986,37 @@ def main(argv: list[str] | None = None) -> int:
                     else:
                         dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria]
 
-            images_folder = os.path.join(vistoria_subdir, "imgs").replace('\\','/')
-            imgs_vistoria = {}
-            print(f"    Loading images of vistoria:")
-            for idx_key_vistoria, key_vistoria in enumerate(dados_vistoria_corrected.keys()):
-                if key_vistoria.startswith("URL "):
-                    img_filename = dados_vistoria_corrected[key_vistoria]
-                    print(f"        {key_vistoria}: {img_filename}")
-                    img_path = os.path.join(images_folder, img_filename).replace('\\','/')
-                    if os.path.isfile(img_path):
-                        # imgs_vistoria[dados_vistoria_corrected[key_vistoria]] = Image.open(img_path)
-                        imgs_vistoria[key_vistoria] = Image.open(img_path)
-                    else:
-                        raise FileNotFoundError(f"Image file not found: {img_path}")
 
-            print("    Launching GUI for labeling...")
-            # dict_selected_labeled_imgs = show_gui_for_labeling_licenseplate_chassi_engine(dados_vistoria_corrected, imgs_vistoria)
-            dict_selected_labeled_imgs = show_gui_for_labeling_license_plate(dados_vistoria_corrected, imgs_vistoria)
-            print("        dict_selected_labeled_imgs:", dict_selected_labeled_imgs)
-            dados_vistoria_corrected.update(dict_selected_labeled_imgs)
-            print("        dados_vistoria_corrected:", dados_vistoria_corrected)
+            if not "primeiro" in dados_vistoria_corrected["Observações"].lower():
+                images_folder = os.path.join(vistoria_subdir, "imgs").replace('\\','/')
+                imgs_vistoria = {}
+                print(f"    Loading images of vistoria:")
+                for idx_key_vistoria, key_vistoria in enumerate(dados_vistoria_corrected.keys()):
+                    if key_vistoria.startswith("URL "):
+                        img_filename = dados_vistoria_corrected[key_vistoria]
+                        print(f"        {key_vistoria}: {img_filename}")
+                        img_path = os.path.join(images_folder, img_filename).replace('\\','/')
+                        if os.path.isfile(img_path):
+                            # imgs_vistoria[dados_vistoria_corrected[key_vistoria]] = Image.open(img_path)
+                            imgs_vistoria[key_vistoria] = Image.open(img_path)
+                        else:
+                            raise FileNotFoundError(f"Image file not found: {img_path}")
 
-
-            dict_global_config["labeled_folders"].append({os.path.basename(vistoria_subdir): str(datetime.now())})
-
-
-            # TODO: Save results to output folder
+                print("    Launching GUI for labeling...")
+                # dict_selected_labeled_imgs = show_gui_for_labeling_licenseplate_chassi_engine(dados_vistoria_corrected, imgs_vistoria)
+                dict_selected_labeled_imgs = show_gui_for_labeling_license_plate(dados_vistoria_corrected, imgs_vistoria)
+                print("        dict_selected_labeled_imgs:", dict_selected_labeled_imgs)
+                dados_vistoria_corrected.update(dict_selected_labeled_imgs)
+                print("        dados_vistoria_corrected:", dados_vistoria_corrected)
 
 
-            save_json(dict_global_config, path_config_global)
+                dict_global_config["labeled_folders"].append({os.path.basename(vistoria_subdir): str(datetime.now())})
+
+
+                # TODO: Save results to output folder
+
+
+                save_json(dict_global_config, path_config_global)
 
         else:
             print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Skipping vistoria subdir: {vistoria_subdir}")
