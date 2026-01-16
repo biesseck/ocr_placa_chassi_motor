@@ -1,4 +1,4 @@
-@echo on
+@echo off
 setlocal EnableExtensions
 
 REM Move to the directory where this .bat file is located
