@@ -4,6 +4,7 @@ import sys
 import time
 
 import torch
+import tkinter as tk
 
 sys.path.append(os.path.dirname(__file__))
 from src.model import IWPODNet
@@ -142,7 +143,9 @@ if __name__ == '__main__':
         #
         #  Defines crop if vehicles were not cropped
         #
-        ASPECTRATIO = 1.0
+        # ASPECTRATIO = 0.25
+        ASPECTRATIO = 0.5
+        # ASPECTRATIO = 1.0
         WPODResolution = 480  # larger if full image is used directly
         lp_output_resolution = tuple(ocr_input_size[::-1])
     else:
@@ -165,11 +168,27 @@ if __name__ == '__main__':
         #  Shows each detected LP
         #
         cv2.imshow('Rectified plate %d' % i, img)
-        cv2.waitKey()
+        # cv2.waitKey()
+
+
+    # Get screen height
+    root = tk.Tk()
+    root.withdraw()
+    screen_height = root.winfo_screenheight()
+    h, w = Ivehicle.shape[:2]
+
+    if h >= screen_height:
+        # Resize
+        target_height = int(screen_height * 0.9)
+        scale = target_height / h
+        target_width = int(w * scale)
+        Ivehicle_resized = cv2.resize(Ivehicle, (target_width, target_height), interpolation=cv2.INTER_AREA)
+    else:
+        Ivehicle_resized = Ivehicle
 
     #
     #  Shows original image with deteced plates (quadrilateral)
     #
-    cv2.imshow('Image and LPs', Ivehicle)
+    cv2.imshow('Image and LPs', Ivehicle_resized)
     cv2.waitKey()
     cv2.destroyAllWindows()
