@@ -6,7 +6,7 @@ import sys
 import os
 from pathlib import Path
 import json
-from PIL import Image
+from PIL import Image, ImageDraw
 from datetime import datetime
 import shutil
 
@@ -940,6 +940,12 @@ def select_folder(title="Select a folder"):
     return folder
 
 
+def make_missing_image():
+    missing_img = Image.new('RGB', (1024, 768), color='gray')
+    ImageDraw.Draw(missing_img).line([(40, 40), (984, 720)], fill ="white", width = 10)
+    ImageDraw.Draw(missing_img).line([(984, 40), (40, 720)], fill ="white", width = 10)
+    return missing_img
+
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1018,8 +1024,9 @@ def main(argv: list[str] | None = None) -> int:
                             # imgs_vistoria[dados_vistoria_corrected[key_vistoria]] = Image.open(img_path)
                             imgs_vistoria[key_vistoria] = Image.open(img_path)
                         else:
-                            raise FileNotFoundError(f"Image file not found: {img_path}")
-
+                            # raise FileNotFoundError(f"Image file not found: {img_path}")
+                            missing_img = make_missing_image()
+                            imgs_vistoria[key_vistoria] = missing_img
 
                 # Launch GUI for labeling
                 print("    Launching GUI for labeling...")
