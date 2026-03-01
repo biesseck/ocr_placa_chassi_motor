@@ -127,9 +127,12 @@ if __name__ == '__main__':
     iwh = np.array(Ivehicle.shape[1::-1], dtype=float).reshape((2, 1))
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print("Creating IWPOD-NET model")
     mymodel = IWPODNet()
+    print("Loading weights")
     # mymodel.load_state_dict(torch.load('weights/iwpodnet_retrained_epoch10000.pth')['model_state_dict'])                      # original
     mymodel.load_state_dict(torch.load('weights/iwpodnet_retrained_epoch10000.pth', map_location=device)['model_state_dict'])   # Bernardo
+    print("    Done")
     mymodel.to(device)
 
     if vtype in ['car', 'bus', 'truck']:
