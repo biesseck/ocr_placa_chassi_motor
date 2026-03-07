@@ -13,7 +13,9 @@ from fast_plate_ocr import LicensePlateRecognizer
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', type=str, default='cct-s-v1-global-model')    # cct-xs-v1-global-model
-    parser.add_argument('--path-dataset', type=str, required=True, default='C:/Users/Bernardo/GitHub/bot_download_chassi_img/qualit/vistorias_qualit/veiculos_vistoria_laudo_chassi_v2_LABELED/qualit_LABELED/vistorias_qualit_LABELED/vistorias_download_LABELED')
+    parser.add_argument('--path-dataset', type=str, default='C:/Users/Bernardo/GitHub/bot_download_chassi_img/qualit/vistorias_qualit/veiculos_vistoria_laudo_chassi_v2_LABELED/qualit_LABELED/vistorias_qualit_LABELED/vistorias_download_LABELED')
+    
+    parser.add_argument('--start-idx', type=int, default=0)
     return parser.parse_args()
 
 
@@ -63,60 +65,65 @@ if __name__ == "__main__":
     all_vistorias_paths = load_all_subdirs(args.path_dataset)
     print(f"    Found {len(all_vistorias_paths)} vistorias")
 
+    print('-----------------')
     for idx_dir_vistoria, path_dir_vistoria in enumerate(all_vistorias_paths):
-        print('-----------------')
-        print(f"{idx_dir_vistoria}/{len(all_vistorias_paths)} Loading vistoria '{path_dir_vistoria}'")
-        json_path = glob.glob(os.path.join(path_dir_vistoria, "dados_vistoria*.json").replace('\\','/'))
-        assert len(json_path) > 0, f"No JSON file found in {path_dir_vistoria}"
-        json_path = json_path[0]
-        print(f"    Loading JSON data from: {json_path}")
-        dados_vistoria_orig = load_json(json_path)
-        dados_vistoria_corrected = {}
-        for idx_key_vistoria, key_vistoria in enumerate(dados_vistoria_orig.keys()):
-            if key_vistoria:
-                if key_vistoria.startswith("URL ") and not dados_vistoria_orig[key_vistoria] is None:
-                    dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria].split('/')[-1]
+        if idx_dir_vistoria >= args.start_idx:
+            if args.start_idx > 0: print()
+            print('-----------------')
+            print(f"{idx_dir_vistoria}/{len(all_vistorias_paths)} Loading vistoria '{path_dir_vistoria}'")
+            json_path = glob.glob(os.path.join(path_dir_vistoria, "dados_vistoria*.json").replace('\\','/'))
+            assert len(json_path) > 0, f"No JSON file found in {path_dir_vistoria}"
+            json_path = json_path[0]
+            print(f"    Loading JSON data from: {json_path}")
+            dados_vistoria_orig = load_json(json_path)
+            dados_vistoria_corrected = {}
+            for idx_key_vistoria, key_vistoria in enumerate(dados_vistoria_orig.keys()):
+                if key_vistoria:
+                    if key_vistoria.startswith("URL ") and not dados_vistoria_orig[key_vistoria] is None:
+                        dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria].split('/')[-1]
+                    else:
+                        dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria]
+
+            if "URL Placa LABELED" in dados_vistoria_corrected and not dados_vistoria_corrected["URL Placa LABELED"] is None and dados_vistoria_corrected["URL Placa LABELED"] != "":
+                img_path = os.path.join(path_dir_vistoria, "imgs", dados_vistoria_corrected["URL Placa LABELED"]).replace('\\','/')
+                assert os.path.isfile(img_path), f"License plate image file not found: {img_path}"
+                
+                print(f"Loading img '{img_path}'")
+                img = cv2.imread(img_path)
+                gt_placa = dados_vistoria_corrected["Placa"]
+                dados_placa_detectada = dados_vistoria_corrected["Placa LABELED DETECTED"]
+                bbox_placa = dados_placa_detectada["bbox"]
+                
+                print(f"Drawing bbox")
+                img_draw = draw_bbox(img, bbox_placa)
+                img_draw, scale = resize_with_scale(img_draw, target_size=600)
+                cv2.imshow("image", img_draw)
+
+                x1, y1, x2, y2 = int(round(bbox_placa[0])), int(round(bbox_placa[1])), int(round(bbox_placa[2])), int(round(bbox_placa[3]))
+                crop_placa = img[y1:y2, x1:x2]
+                
+                # crop_placa_resized = crop_placa
+                # crop_placa_resized = cv2.resize(crop_placa, (128, 64))
+                crop_placa_resized, scale = resize_with_scale(crop_placa, target_size=128)
+                print('crop_placa_resized.shape:', crop_placa_resized.shape)
+
+                print('Running OCR model...')
+                pred_placa = model.run(crop_placa_resized)
+                pred_placa = pred_placa[0].replace("_", "")
+                # print(f"type(pred_placa): {type(pred_placa)}")
+                print(f"    GT Placa  :", gt_placa)
+                print(f"    Pred Placa:", pred_placa)
+
+                if pred_placa == gt_placa:
+                    print("    Placa reconhecida corretamente!")
                 else:
-                    dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria]
+                    print("    Placa não reconhecida ou reconhecida parcialmente!")
 
-        if "URL Placa LABELED" in dados_vistoria_corrected and not dados_vistoria_corrected["URL Placa LABELED"] is None and dados_vistoria_corrected["URL Placa LABELED"] != "":
-            img_path = os.path.join(path_dir_vistoria, "imgs", dados_vistoria_corrected["URL Placa LABELED"]).replace('\\','/')
-            assert os.path.isfile(img_path), f"License plate image file not found: {img_path}"
-            
-            print(f"Loading img '{img_path}'")
-            img = cv2.imread(img_path)
-            gt_placa = dados_vistoria_corrected["Placa"]
-            dados_placa_detectada = dados_vistoria_corrected["Placa LABELED DETECTED"]
-            bbox_placa = dados_placa_detectada["bbox"]
-            
-            print(f"Drawing bbox")
-            img_draw = draw_bbox(img, bbox_placa)
-            img_draw, scale = resize_with_scale(img_draw, target_size=600)
-            cv2.imshow("image", img_draw)
-
-            x1, y1, x2, y2 = int(round(bbox_placa[0])), int(round(bbox_placa[1])), int(round(bbox_placa[2])), int(round(bbox_placa[3]))
-            crop_placa = img[y1:y2, x1:x2]
-            
-            # crop_placa_resized = crop_placa
-            # crop_placa_resized = cv2.resize(crop_placa, (128, 64))
-            crop_placa_resized, scale = resize_with_scale(crop_placa, target_size=128)
-            print('crop_placa_resized.shape:', crop_placa_resized.shape)
-
-            print('Running OCR model...')
-            pred_placa = model.run(crop_placa_resized)
-            pred_placa = pred_placa[0].replace("_", "")
-            # print(f"type(pred_placa): {type(pred_placa)}")
-            print(f"    GT Placa  :", gt_placa)
-            print(f"    Pred Placa:", pred_placa)
-
-            if pred_placa == gt_placa:
-                print("    Placa reconhecida corretamente!")
-            else:
-                print("    Placa não reconhecida ou reconhecida parcialmente!")
-
-            cv2.imshow("crop_placa_resized", crop_placa_resized)
-            cv2.waitKey(0)
-
+                cv2.imshow("crop_placa_resized", crop_placa_resized)
+                cv2.waitKey(0)
+        
+        else:
+            print(f"Skipping vistoria idx {idx_dir_vistoria}", end="\r")
 
     '''
     print(f"Loading img '{args.image}'")
