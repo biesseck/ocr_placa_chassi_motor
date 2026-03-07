@@ -92,6 +92,134 @@ def resize_with_scale(image, target_size=640):
 
 
 
+class BBoxAnnotator:
+    def __init__(self, image):
+        self.original_image = image.copy()
+        self.h, self.w = image.shape[:2]
+        
+        # Add a 60-pixel panel at the bottom for our buttons
+        self.panel_h = 60
+        self.canvas = np.zeros((self.h + self.panel_h, self.w, 3), dtype=np.uint8)
+        self.canvas[:self.h, :] = image
+
+        self.bbox = []
+        self.drawing = False
+        self.start_pt = (-1, -1)
+        self.result = []
+        self.is_done = False  # New flag to safely break the loop even if result is None
+
+        # Define button zones: divided by 4
+        bw = self.w // 4
+        y1, y2 = self.h, self.h + self.panel_h
+        
+        self.btn_ok = (0, y1, bw, y2)
+        self.btn_clear = (bw, y1, bw*2, y2)
+        self.btn_no_plate = (bw*2, y1, bw*3, y2)
+        self.btn_cancel = (bw*3, y1, self.w, y2)
+
+        self._draw_ui()
+
+    def _draw_button(self, rect, text, color):
+        """Helper to draw a button and center its text."""
+        cv2.rectangle(self.canvas, (rect[0], rect[1]), (rect[2], rect[3]), color, -1)
+        
+        font_scale = 0.7
+        thickness = 2
+        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)[0]
+        
+        # Calculate center position for the text
+        text_x = rect[0] + (rect[2] - rect[0] - text_size[0]) // 2
+        text_y = rect[1] + (rect[3] - rect[1] + text_size[1]) // 2
+        
+        cv2.putText(self.canvas, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness)
+
+    def _draw_ui(self):
+        # Draw all four buttons with distinct colors
+        self._draw_button(self.btn_ok, "OK", (0, 200, 0))            # Green
+        self._draw_button(self.btn_clear, "CLEAR", (0, 165, 255))    # Orange
+        self._draw_button(self.btn_no_plate, "NO PLATE", (200, 100, 0)) # Blue
+        self._draw_button(self.btn_cancel, "CANCEL", (0, 0, 200))    # Red
+
+    def _reset_image(self):
+        """Restores the image area to its original state, removing drawn boxes."""
+        self.canvas[:self.h, :] = self.original_image
+        self.bbox = []
+        cv2.imshow("Annotator", self.canvas)
+
+    def mouse_callback(self, event, x, y, flags, param):
+        # 1. Handle clicking in the Button Panel
+        if event == cv2.EVENT_LBUTTONDOWN and y >= self.h:
+            if self.btn_ok[0] <= x <= self.btn_ok[2]:
+                self.result = [float(c) for c in self.bbox] if self.bbox else []
+                self.is_done = True
+            elif self.btn_clear[0] <= x <= self.btn_clear[2]:
+                self._reset_image()
+            elif self.btn_no_plate[0] <= x <= self.btn_no_plate[2]:
+                self.result = None  # Returns None as requested
+                self.is_done = True
+            elif self.btn_cancel[0] <= x <= self.btn_cancel[2]:
+                self.result = [] 
+                self.is_done = True
+            return
+
+        # 2. Handle drawing in the Image Area
+        if y < self.h:
+            if event == cv2.EVENT_LBUTTONDOWN:
+                if not self.bbox:
+                    self.drawing = True
+                    self.start_pt = (x, y)
+                    
+            elif event == cv2.EVENT_MOUSEMOVE:
+                if self.drawing:
+                    temp_canvas = self.canvas.copy()
+                    cv2.rectangle(temp_canvas, self.start_pt, (x, y), (0, 255, 0), 2)
+                    cv2.imshow("Annotator", temp_canvas)
+                    
+            elif event == cv2.EVENT_LBUTTONUP:
+                if self.drawing:
+                    self.drawing = False
+                    x1, y1 = self.start_pt
+                    x2, y2 = x, y
+                    
+                    xmin, ymin = min(x1, x2), min(y1, y2)
+                    xmax, ymax = max(x1, x2), max(y1, y2)
+                    
+                    self.bbox = [xmin, ymin, xmax, ymax]
+                    cv2.rectangle(self.canvas, (xmin, ymin), (xmax, ymax), (0, 255, 0), 2)
+                    cv2.imshow("Annotator", self.canvas)
+
+    def run(self):
+        cv2.namedWindow("Annotator")
+        cv2.setMouseCallback("Annotator", self.mouse_callback)
+
+        while not self.is_done:
+            if not self.drawing:
+                cv2.imshow("Annotator", self.canvas)
+            
+            key = cv2.waitKey(1) & 0xFF
+            
+            # Allow pressing 'ESC' as a quick cancel
+            if key == 27: 
+                self.result = []
+                break
+
+        cv2.destroyWindow("Annotator")
+        return self.result
+
+def get_manual_bbox(image):
+    """
+    Shows the image with OK, CLEAR, NO PLATE, and CANCEL buttons.
+    Returns:
+        [xmin, ymin, xmax, ymax] as floats if OK is clicked with a box.
+        None if NO PLATE is clicked.
+        [] if CANCEL is clicked or OK is clicked without drawing.
+    """
+    annotator = BBoxAnnotator(image)
+    return annotator.run()
+
+
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
@@ -161,7 +289,10 @@ def main(argv: list[str] | None = None) -> int:
                         dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria]
 
             # Load img and detect license plate
-            if "URL Placa LABELED" in dados_vistoria_corrected and not dados_vistoria_corrected["URL Placa LABELED"] is None and dados_vistoria_corrected["URL Placa LABELED"] != "":
+            if "URL Placa LABELED" in dados_vistoria_corrected and \
+               not dados_vistoria_corrected["URL Placa LABELED"] is None and \
+               dados_vistoria_corrected["URL Placa LABELED"] != "" and \
+               not "Placa LABELED DETECTED" in dados_vistoria_corrected:
                 img_path = os.path.join(vistoria_subdir, "imgs", dados_vistoria_corrected["URL Placa LABELED"]).replace('\\','/')
                 assert os.path.isfile(img_path), f"License plate image file not found: {img_path}"
                 print(f"Loading img '{img_path}'")
@@ -195,10 +326,6 @@ def main(argv: list[str] | None = None) -> int:
                                                                                   "class_id": cls_id,
                                                                                   "label": label}
 
-                    json_output_path = json_path.replace('\\','/')
-                    print(f"Saving output labeled JSON data to: {json_output_path}")
-                    save_json(dados_vistoria_corrected, json_output_path)
-
                     # cv2.imshow('License Plate Detection (resized)', img_resized)
                     # cv2.waitKey(0)
                     # cv2.destroyAllWindows()
@@ -207,7 +334,28 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     print("No license plate detected.")
 
+                    bbox = get_manual_bbox(img_resized)
+                    print(f"Returned bounding box: {bbox}")
+
+                    if bbox is None:
+                        print("User indicated NO PLATE present.")
+                        dados_vistoria_corrected["URL Placa LABELED"] = None
+                    elif len(bbox) == 4:
+                        bbox = np.array(bbox)
+                        dados_vistoria_corrected["Placa LABELED DETECTED"] = {"bbox": (bbox/scale).tolist(),
+                                                                              "conf": 0.5,  # Default confidence for manual annotations
+                                                                              "class_id": 0,
+                                                                              "label": "License_Plate"}
+
+                    # cv2.imshow('License Plate Detection (resized)', img_resized)
+                    # cv2.waitKey(0)
+                    # cv2.destroyAllWindows()
+
                 # sys.exit(0)
+
+                json_output_path = json_path.replace('\\','/')
+                print(f"Saving output labeled JSON data to: {json_output_path}")
+                save_json(dados_vistoria_corrected, json_output_path)
                 
         else:
             print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Skipping vistoria subdir: {vistoria_subdir}")
