@@ -16,6 +16,7 @@ def parse_arguments():
     parser.add_argument('--path-dataset', type=str, default='C:/Users/Bernardo/GitHub/bot_download_chassi_img/qualit/vistorias_qualit/veiculos_vistoria_laudo_chassi_v2_LABELED/qualit_LABELED/vistorias_qualit_LABELED/vistorias_download_LABELED')
     
     parser.add_argument('--start-idx', type=int, default=0)
+    parser.add_argument('--show-images', action='store_true')
     return parser.parse_args()
 
 
@@ -64,8 +65,13 @@ if __name__ == "__main__":
     print(f"Searching vistorias dirs in: '{args.path_dataset}'")
     all_vistorias_paths = load_all_subdirs(args.path_dataset)
     print(f"    Found {len(all_vistorias_paths)} vistorias")
-
     print('-----------------')
+
+    plate_hits, plate_misses = 0, 0
+    num_existing_plates, num_missing_plates = 0, 0
+    
+    num_valid_chars = 0
+    chars_hits, chars_misses = 0, 0
     for idx_dir_vistoria, path_dir_vistoria in enumerate(all_vistorias_paths):
         if idx_dir_vistoria >= args.start_idx:
             if args.start_idx > 0: print()
@@ -97,7 +103,9 @@ if __name__ == "__main__":
                 print(f"Drawing bbox")
                 img_draw = draw_bbox(img, bbox_placa)
                 img_draw, scale = resize_with_scale(img_draw, target_size=600)
-                cv2.imshow("image", img_draw)
+                
+                if args.show_images:
+                    cv2.imshow("image", img_draw)
 
                 x1, y1, x2, y2 = int(round(bbox_placa[0])), int(round(bbox_placa[1])), int(round(bbox_placa[2])), int(round(bbox_placa[3]))
                 crop_placa = img[y1:y2, x1:x2]
@@ -114,67 +122,39 @@ if __name__ == "__main__":
                 print(f"    GT Placa  :", gt_placa)
                 print(f"    Pred Placa:", pred_placa)
 
+                num_existing_plates += 1
                 if pred_placa == gt_placa:
+                    plate_hits += 1
                     print("    Placa reconhecida corretamente!")
                 else:
+                    plate_misses += 1
                     print("    Placa não reconhecida ou reconhecida parcialmente!")
 
-                cv2.imshow("crop_placa_resized", crop_placa_resized)
-                cv2.waitKey(0)
-        
+                chars_hits += sum(1 for p, g in zip(pred_placa, gt_placa) if p == g)
+                chars_misses += sum(1 for p, g in zip(pred_placa, gt_placa) if p != g)
+                num_valid_chars += len(gt_placa)
+
+                if args.show_images:
+                    cv2.imshow("crop_placa_resized", crop_placa_resized)
+                    cv2.waitKey(0)
+
+            else:
+                num_missing_plates += 1
+
         else:
             print(f"Skipping vistoria idx {idx_dir_vistoria}", end="\r")
 
-    '''
-    print(f"Loading img '{args.image}'")
-    img = cv2.imread(args.image)
-    img_resized = cv2.resize(img, (640, 640))
-    cv2.imshow("img_resized", img_resized)
-    cv2.waitKey(0)
-
-    print(f"Loading model '{args.model}'")
-    model = YOLO(args.model)
-    print("    Done")
-
-    print("Performing inference...")
-    results = model.predict(source=img_resized, conf=0.60, iou=0.45, max_det=1)
-    # print("results:", results)
-
-    if len(results[0].boxes) > 0:
-        for result in results:
-            for box in result.boxes:
-                coords = box.xyxy[0].tolist()
-                conf = float(box.conf[0])
-                cls_id = int(box.cls[0])
-                label = result.names[cls_id]
-                print(f"--- Detection Found ---")
-                print(f"Label: {label}")
-                print(f"Confidence: {conf:.2%}")
-                print(f"Coordinates: x1={coords[0]:.1f}, y1={coords[1]:.1f}, x2={coords[2]:.1f}, y2={coords[3]:.1f}")
-
-                # Extract coordinates (top-left x, top-left y, bottom-right x, bottom-right y)
-                x1, y1, x2, y2 = box.xyxy[0]
-                
-                # Convert tensors/floats to integers for OpenCV
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                
-                # 4. Draw the red rectangle (BGR format: Red is 0, 0, 255)
-                cv2.rectangle(img_resized, (x1, y1), (x2, y2), (0, 0, 255), 2)
-                
-                # Optional: Add a label
-                cv2.putText(img_resized, "License Plate", (x1, y1 - 10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-
-        # 5. Show on screen
-        cv2.imshow('License Plate Detection', img_resized)
-
-        # Keep the window open until a key is pressed
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
-    else:
-        print("No license plate detected.")
-    '''
-        
-        
+    print('-----------------')
+    total_acc_plates = plate_hits / num_existing_plates
+    print(f"Final Results:")
+    print(f"num_vistorias: {len(all_vistorias_paths)}")
+    print(f"num_existing_plates: {num_existing_plates}/{len(all_vistorias_paths)}: {num_existing_plates/len(all_vistorias_paths):.2%}")
+    print(f"num_missing_plates: {num_missing_plates}/{len(all_vistorias_paths)}: {num_missing_plates/len(all_vistorias_paths):.2%}")
+    print(f"    Plate Hits: {plate_hits}/{num_existing_plates}    acc_plates: {total_acc_plates:.2%}")
+    print(f"    Plate Misses: {plate_misses}/{num_existing_plates}")
+    print('-----------------')
+    print(f"num_valid_chars: {num_valid_chars}")
+    print(f"    Char Hits: {chars_hits}/{num_valid_chars}    acc_chars: {chars_hits/num_valid_chars:.2%}")
+    print(f"    Char Misses: {chars_misses}/{num_valid_chars}")
+    
     print("Finished\n")
