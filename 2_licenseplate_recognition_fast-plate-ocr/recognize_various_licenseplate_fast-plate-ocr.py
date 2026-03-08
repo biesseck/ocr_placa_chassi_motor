@@ -16,7 +16,8 @@ def parse_arguments():
     parser.add_argument('--path-dataset', type=str, default='C:/Users/Bernardo/GitHub/bot_download_chassi_img/qualit/vistorias_qualit/veiculos_vistoria_laudo_chassi_v2_LABELED/qualit_LABELED/vistorias_qualit_LABELED/vistorias_download_LABELED')
     
     parser.add_argument('--start-idx', type=int, default=0)
-    parser.add_argument('--show-images', action='store_true')
+    parser.add_argument('--show-all-images', action='store_true')
+    parser.add_argument('--show-error-images', action='store_true')
     return parser.parse_args()
 
 
@@ -104,7 +105,7 @@ if __name__ == "__main__":
                 img_draw = draw_bbox(img, bbox_placa)
                 img_draw, scale = resize_with_scale(img_draw, target_size=600)
                 
-                if args.show_images:
+                if args.show_all_images:
                     cv2.imshow("image", img_draw)
 
                 x1, y1, x2, y2 = int(round(bbox_placa[0])), int(round(bbox_placa[1])), int(round(bbox_placa[2])), int(round(bbox_placa[3]))
@@ -129,12 +130,16 @@ if __name__ == "__main__":
                 else:
                     plate_misses += 1
                     print("    Placa não reconhecida ou reconhecida parcialmente!")
+                    if args.show_error_images:
+                        cv2.imshow("image", img_draw)
+                        cv2.imshow("crop_placa_resized", crop_placa_resized)
+                        cv2.waitKey(0)
 
                 chars_hits += sum(1 for p, g in zip(pred_placa, gt_placa) if p == g)
                 chars_misses += sum(1 for p, g in zip(pred_placa, gt_placa) if p != g)
                 num_valid_chars += len(gt_placa)
 
-                if args.show_images:
+                if args.show_all_images:
                     cv2.imshow("crop_placa_resized", crop_placa_resized)
                     cv2.waitKey(0)
 
