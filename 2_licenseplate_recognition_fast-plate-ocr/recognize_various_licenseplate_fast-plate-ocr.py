@@ -7,7 +7,8 @@ from pathlib import Path
 import json
 import glob
 import re
-from fast_plate_ocr import LicensePlateRecognizer, PlatePrediction
+from fast_plate_ocr import LicensePlateRecognizer
+# from fast_plate_ocr import PlatePrediction
 
 
 def parse_arguments():
@@ -120,8 +121,8 @@ if __name__ == "__main__":
                 pred_placa = model.run(crop_placa_resized)
                 if type(pred_placa[0]) is str:
                     pred_placa = pred_placa[0].replace("_", "")
-                elif type(pred_placa[0]) is PlatePrediction:
-                    pred_placa = pred_placa[0].plate.replace("_", "")
+                # elif type(pred_placa[0]) is PlatePrediction:
+                #     pred_placa = pred_placa[0].plate.replace("_", "")
                 # print(f"type(pred_placa): {type(pred_placa)}")
                 print(f"    GT Placa  :", gt_placa)
                 print(f"    Pred Placa:", pred_placa)
