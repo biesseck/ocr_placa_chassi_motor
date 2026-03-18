@@ -278,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
 
             # json_path = os.path.join(vistoria_subdir, "dados_vistoria.json").replace('\\','/')
             json_path = glob.glob(os.path.join(vistoria_subdir, "dados_vistoria*.json").replace('\\','/'))
-            assert len(json_path) > 0, f"No JSON file found in {vistoria_subdir}"
+            assert len(json_path) == 1, f"Expected 1 JSON file in {vistoria_subdir}, found {len(json_path)}"
             json_path = json_path[0]
             print(f"    Loading JSON data from: {json_path}")
             dados_vistoria_orig = load_json(json_path)
