@@ -14,11 +14,12 @@ from fast_plate_ocr import LicensePlateRecognizer
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', type=str, default='cct-s-v1-global-model')    # cct-xs-v1-global-model
-    parser.add_argument('--path-dataset', type=str, default='C:/Users/Bernardo/GitHub/bot_download_chassi_img/qualit/vistorias_qualit/veiculos_vistoria_laudo_chassi_v2_LABELED/qualit_LABELED/vistorias_qualit_LABELED/vistorias_download_LABELED')
+    parser.add_argument('--path-dataset', type=str, default='C:/Users/Bernardo/GitHub/bot_download_chassi_img/qualit/vistorias_qualit/vistorias_download_v2_SEM_FOTOS_EXTRAS_LABELED')
     
     parser.add_argument('--start-idx', type=int, default=0)
     parser.add_argument('--show-all-images', action='store_true')
     parser.add_argument('--show-error-images', action='store_true')
+    parser.add_argument('--save-results', action='store_true')
     return parser.parse_args()
 
 
@@ -70,10 +71,10 @@ if __name__ == "__main__":
     print('-----------------')
 
     plate_hits, plate_misses = 0, 0
-    num_existing_plates, num_missing_plates = 0, 0
+    num_imgs_with_plate, num_imgs_without_plate = 0, 0
     
-    num_valid_chars = 0
-    chars_hits, chars_misses = 0, 0
+    num_all_valid_chars = 0
+    all_chars_hits, all_chars_misses = 0, 0
     for idx_dir_vistoria, path_dir_vistoria in enumerate(all_vistorias_paths):
         if idx_dir_vistoria >= args.start_idx:
             if args.start_idx > 0: print()
@@ -127,7 +128,7 @@ if __name__ == "__main__":
                 print(f"    GT Placa  :", gt_placa)
                 print(f"    Pred Placa:", pred_placa)
 
-                num_existing_plates += 1
+                num_imgs_with_plate += 1
                 if pred_placa == gt_placa:
                     plate_hits += 1
                     print("    Placa reconhecida corretamente!")
@@ -139,31 +140,32 @@ if __name__ == "__main__":
                         cv2.imshow("crop_placa_resized", crop_placa_resized)
                         cv2.waitKey(0)
 
-                chars_hits += sum(1 for p, g in zip(pred_placa, gt_placa) if p == g)
-                chars_misses += sum(1 for p, g in zip(pred_placa, gt_placa) if p != g)
-                num_valid_chars += len(gt_placa)
+                all_chars_hits += sum(1 for p, g in zip(pred_placa, gt_placa) if p == g)
+                all_chars_misses += sum(1 for p, g in zip(pred_placa, gt_placa) if p != g)
+                num_all_valid_chars += len(gt_placa)
 
                 if args.show_all_images:
                     cv2.imshow("crop_placa_resized", crop_placa_resized)
                     cv2.waitKey(0)
 
             else:
-                num_missing_plates += 1
+                num_imgs_without_plate += 1
 
         else:
             print(f"Skipping vistoria idx {idx_dir_vistoria}", end="\r")
 
-    print('-----------------')
-    total_acc_plates = plate_hits / num_existing_plates
+    print('\n========================================\n')
+    total_acc_plates = plate_hits / num_imgs_with_plate
     print(f"Final Results:")
-    print(f"num_vistorias: {len(all_vistorias_paths)}")
-    print(f"num_existing_plates: {num_existing_plates}/{len(all_vistorias_paths)}: {num_existing_plates/len(all_vistorias_paths):.2%}")
-    print(f"num_missing_plates: {num_missing_plates}/{len(all_vistorias_paths)}: {num_missing_plates/len(all_vistorias_paths):.2%}")
-    print(f"    Plate Hits: {plate_hits}/{num_existing_plates}    acc_plates: {total_acc_plates:.2%}")
-    print(f"    Plate Misses: {plate_misses}/{num_existing_plates}")
+    print(f"num_vistorias:       {len(all_vistorias_paths)}")
+    print(f"num_imgs_with_plate: {num_imgs_with_plate}/{len(all_vistorias_paths)-args.start_idx}: {num_imgs_with_plate/(len(all_vistorias_paths)-args.start_idx):.2%}")
+    print(f"num_imgs_without_plate: {num_imgs_without_plate}/{len(all_vistorias_paths)-args.start_idx}: {num_imgs_without_plate/(len(all_vistorias_paths)-args.start_idx):.2%}")
     print('-----------------')
-    print(f"num_valid_chars: {num_valid_chars}")
-    print(f"    Char Hits: {chars_hits}/{num_valid_chars}    acc_chars: {chars_hits/num_valid_chars:.2%}")
-    print(f"    Char Misses: {chars_misses}/{num_valid_chars}")
+    print(f"Plate Hits:   {plate_hits}/{num_imgs_with_plate}    acc_plates: {total_acc_plates:.2%}")
+    print(f"Plate Misses: {plate_misses}/{num_imgs_with_plate}")
+    print('-----------------')
+    print(f"num_all_valid_chars: {num_all_valid_chars}")
+    print(f"    Char Hits:   {all_chars_hits}/{num_all_valid_chars}    acc_chars: {all_chars_hits/num_all_valid_chars:.2%}")
+    print(f"    Char Misses: {all_chars_misses}/{num_all_valid_chars}")
     
-    print("Finished\n")
+    print("\nFinished\n")
