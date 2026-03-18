@@ -74,6 +74,8 @@ def save_ocr_comparison(image_crop, ground_truth, prediction, title, save_path,
     fig, ax = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1, 1]})
     fig.suptitle(title, fontsize=font_size+4, family=font_family)
 
+    if type(image_crop) == np.ndarray:
+        image_crop = cv2.cvtColor(image_crop, cv2.COLOR_BGR2RGB)
     ax[0].imshow(image_crop)
     ax[0].set_title(f"License Plate Crop - shape: {image_crop.shape}px", fontsize=font_size, family=font_family)
     ax[0].axis('off')  # Hide axis for the image
