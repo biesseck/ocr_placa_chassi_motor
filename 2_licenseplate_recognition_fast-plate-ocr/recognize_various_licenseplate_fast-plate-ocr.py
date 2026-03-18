@@ -10,6 +10,9 @@ import re
 from fast_plate_ocr import LicensePlateRecognizer
 # from fast_plate_ocr import PlatePrediction
 
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -65,6 +68,33 @@ def draw_bbox(img, bbox):
     cv2.putText(img_copy, "License Plate", (x1, y1-20), cv2.FONT_HERSHEY_SIMPLEX, 2.5, (0, 0, 255), 4)
     return img_copy
 
+
+def save_ocr_comparison(image_crop, ground_truth, prediction, title, save_path, 
+                        figsize=(10, 4), font_size=14, font_family='Consolas'):
+    fig, ax = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [1, 1]})
+    fig.suptitle(title, fontsize=font_size+4, family=font_family)
+
+    ax[0].imshow(image_crop)
+    ax[0].set_title(f"License Plate Crop - shape: {image_crop.shape}px", fontsize=font_size, family=font_family)
+    ax[0].axis('off')  # Hide axis for the image
+    ax[1].axis('off')
+    
+    match_color = 'green' if ground_truth.strip().upper() == prediction.strip().upper() else 'red'
+    
+    text_content = (
+        f"Ground Truth: {ground_truth}\n\n"
+        f"Prediction:   {prediction}"
+    )
+    
+    ax[1].text(0.1, 0.5, text_content, 
+               fontsize=font_size+4, 
+               family=font_family,
+               verticalalignment='center',
+               bbox=dict(facecolor='white', alpha=0.5, edgecolor=match_color, boxstyle='round,pad=1'))
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust to fit the suptitle
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close(fig)
 
 
 if __name__ == "__main__":
@@ -173,6 +203,13 @@ if __name__ == "__main__":
                     all_success_predictions["predictions"][os.path.basename(path_dir_vistoria)] = prediction_info
                     print("    Placa reconhecida corretamente!")
 
+                    if args.save_predictions:
+                        chart_title = f"Vistoria: {os.path.basename(path_dir_vistoria)}\nURL Placa LABELED: {dados_vistoria_corrected['URL Placa LABELED']}\nGT Placa: {gt_placa}    Pred Placa: {pred_placa}"
+                        chart_path = os.path.join(success_folder, 'imgs', f"chars-misses-{chars_misses}_chars-hits-{chars_hits}_{os.path.basename(path_dir_vistoria)}.png").replace('\\','/')
+                        os.makedirs(os.path.dirname(chart_path), exist_ok=True)
+                        print(f"    Saving chart prediction: '{chart_path}'")
+                        save_ocr_comparison(crop_placa_resized, gt_placa, pred_placa, chart_title, chart_path)
+
                 else:
                     plate_misses += 1
                     all_failure_predictions["predictions"][os.path.basename(path_dir_vistoria)] = prediction_info
@@ -181,6 +218,13 @@ if __name__ == "__main__":
                         cv2.imshow("image", img_draw)
                         cv2.imshow("crop_placa_resized", crop_placa_resized)
                         cv2.waitKey(0)
+
+                    if args.save_predictions:
+                        chart_title = f"Vistoria: {os.path.basename(path_dir_vistoria)}\nURL Placa LABELED: {dados_vistoria_corrected['URL Placa LABELED']}\nGT Placa: {gt_placa}    Pred Placa: {pred_placa}"
+                        chart_path = os.path.join(failure_folder, 'imgs', f"chars-misses-{chars_misses}_chars-hits-{chars_hits}_{os.path.basename(path_dir_vistoria)}.png").replace('\\','/')
+                        os.makedirs(os.path.dirname(chart_path), exist_ok=True)
+                        print(f"    Saving chart prediction: '{chart_path}'")
+                        save_ocr_comparison(crop_placa_resized, gt_placa, pred_placa, chart_title, chart_path)
 
                 if args.save_predictions:
                     print(f"    Saving predictions to JSON file: '{success_predictions_path}'")
