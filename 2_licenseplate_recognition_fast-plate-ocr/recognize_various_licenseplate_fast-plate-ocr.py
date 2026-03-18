@@ -19,7 +19,7 @@ def parse_arguments():
     parser.add_argument('--start-idx', type=int, default=0)
     parser.add_argument('--show-all-images', action='store_true')
     parser.add_argument('--show-error-images', action='store_true')
-    parser.add_argument('--save-results', action='store_true')
+    parser.add_argument('--save-predictions', action='store_true')
     return parser.parse_args()
 
 
@@ -39,6 +39,15 @@ def load_json(path: str) -> dict:
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
 
+def save_json(obj: dict, path: str, indent: int = 4) -> None:
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with tmp.open("w", encoding="utf-8") as fh:
+        json.dump(obj, fh, ensure_ascii=False, indent=indent)
+        fh.flush()
+        os.fsync(fh.fileno())
+    tmp.replace(path)
 
 def resize_with_scale(image, target_size=128):
     h, w = image.shape[:2]
@@ -60,6 +69,7 @@ def draw_bbox(img, bbox):
 
 if __name__ == "__main__":
     args = parse_arguments()
+    args.path_dataset = args.path_dataset.replace('\\','/')
 
     print(f"Loading model '{args.model}'")
     model = LicensePlateRecognizer(args.model)
@@ -70,11 +80,24 @@ if __name__ == "__main__":
     print(f"    Found {len(all_vistorias_paths)} vistorias")
     print('-----------------')
 
+    output_folder_results = "./predictions_model_" + args.model
+    success_folder = os.path.join(output_folder_results, "success").replace('\\','/')
+    failure_folder = os.path.join(output_folder_results, "failure").replace('\\','/')
+    success_predictions_path = os.path.join(success_folder, "success_predictions.json").replace('\\','/')
+    failure_predictions_path = os.path.join(failure_folder, "failure_predictions.json").replace('\\','/')
+    if args.save_predictions:
+        os.makedirs(output_folder_results, exist_ok=True)
+        os.makedirs(success_folder, exist_ok=True)
+        os.makedirs(failure_folder, exist_ok=True)
+
+    all_success_predictions = {"path_dataset": args.path_dataset, "model": args.model, "predictions": {}}
+    all_failure_predictions = {"path_dataset": args.path_dataset, "model": args.model, "predictions": {}}
+
     plate_hits, plate_misses = 0, 0
     num_imgs_with_plate, num_imgs_without_plate = 0, 0
-    
     num_all_valid_chars = 0
     all_chars_hits, all_chars_misses = 0, 0
+
     for idx_dir_vistoria, path_dir_vistoria in enumerate(all_vistorias_paths):
         if idx_dir_vistoria >= args.start_idx:
             if args.start_idx > 0: print()
@@ -125,24 +148,45 @@ if __name__ == "__main__":
                 # elif type(pred_placa[0]) is PlatePrediction:
                 #     pred_placa = pred_placa[0].plate.replace("_", "")
                 # print(f"type(pred_placa): {type(pred_placa)}")
+                
+                chars_hits   = sum(1 for p, g in zip(pred_placa, gt_placa) if p == g)
+                chars_misses = sum(1 for p, g in zip(pred_placa, gt_placa) if p != g)
+                all_chars_hits   += chars_hits
+                all_chars_misses += chars_misses
+                num_all_valid_chars += len(gt_placa)
+
+                prediction_info = {
+                    "URL Placa LABELED":      dados_vistoria_corrected["URL Placa LABELED"],
+                    "Placa LABELED DETECTED": dados_vistoria_corrected["Placa LABELED DETECTED"],
+                    "gt_placa":               gt_placa,
+                    "pred_placa":             pred_placa,
+                    "chars_hits":             chars_hits,
+                    "chars_misses":           chars_misses
+                }
+
                 print(f"    GT Placa  :", gt_placa)
                 print(f"    Pred Placa:", pred_placa)
 
                 num_imgs_with_plate += 1
                 if pred_placa == gt_placa:
                     plate_hits += 1
+                    all_success_predictions["predictions"][os.path.basename(path_dir_vistoria)] = prediction_info
                     print("    Placa reconhecida corretamente!")
+
                 else:
                     plate_misses += 1
+                    all_failure_predictions["predictions"][os.path.basename(path_dir_vistoria)] = prediction_info
                     print("    Placa não reconhecida ou reconhecida parcialmente!")
                     if args.show_error_images:
                         cv2.imshow("image", img_draw)
                         cv2.imshow("crop_placa_resized", crop_placa_resized)
                         cv2.waitKey(0)
 
-                all_chars_hits += sum(1 for p, g in zip(pred_placa, gt_placa) if p == g)
-                all_chars_misses += sum(1 for p, g in zip(pred_placa, gt_placa) if p != g)
-                num_all_valid_chars += len(gt_placa)
+                if args.save_predictions:
+                    print(f"    Saving predictions to JSON file: '{success_predictions_path}'")
+                    save_json(all_success_predictions, success_predictions_path)
+                    print(f"    Saving predictions to JSON file: '{failure_predictions_path}'")
+                    save_json(all_failure_predictions, failure_predictions_path)
 
                 if args.show_all_images:
                     cv2.imshow("crop_placa_resized", crop_placa_resized)
