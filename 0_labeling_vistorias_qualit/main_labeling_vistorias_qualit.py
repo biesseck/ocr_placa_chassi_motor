@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 import argparse
+import glob
 import re
 import sys
 import os
@@ -999,16 +1000,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{idx_vistoria_subdir}/{len(all_vistorias_subdirs)}: Processing vistoria subdir: {vistoria_subdir}")
 
 
-            json_path = os.path.join(vistoria_subdir, "dados_vistoria.json").replace('\\','/')
+            json_pattern = os.path.join(vistoria_subdir, "dados_vistoria*.json").replace('\\','/')
+            json_path = glob.glob(json_pattern)
+            assert len(json_path) == 1, f"Expected exactly one JSON file in {vistoria_subdir}, but found {len(json_path)}"
+            json_path = json_path[0]
             print(f"    Loading JSON data from: {json_path}")
             dados_vistoria_orig = load_json(json_path)
             dados_vistoria_corrected = {}
             for idx_key_vistoria, key_vistoria in enumerate(dados_vistoria_orig.keys()):
                 if key_vistoria:
-                    if key_vistoria.startswith("URL "):
+                    if key_vistoria.startswith("URL ") and not dados_vistoria_orig[key_vistoria] is None:
                         dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria].split('/')[-1]
                     else:
                         dados_vistoria_corrected[key_vistoria] = dados_vistoria_orig[key_vistoria]
+
+
+            if "URL Placa LABELED" in dados_vistoria_corrected:
+                print("    Vistoria already labeled. Skipping...")
+                continue
 
 
             if not "primeiro" in dados_vistoria_corrected["Observações"].lower():
