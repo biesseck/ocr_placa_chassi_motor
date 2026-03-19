@@ -52,6 +52,14 @@ def save_json(obj: dict, path: str, indent: int = 4) -> None:
         os.fsync(fh.fileno())
     tmp.replace(path)
 
+def save_to_txt(content, file_path, append=False):
+    mode = 'a' if append else 'w'
+    with open(file_path, mode, encoding='utf-8') as f:
+        if isinstance(content, list):
+            f.write('\n'.join(map(str, content)) + '\n')
+        else:
+            f.write(str(content) + '\n')
+
 def resize_with_scale(image, target_size=128):
     h, w = image.shape[:2]
     scale = target_size / max(h, w)
@@ -117,6 +125,7 @@ if __name__ == "__main__":
     failure_folder = os.path.join(output_folder_results, "failure").replace('\\','/')
     success_predictions_path = os.path.join(success_folder, "success_predictions.json").replace('\\','/')
     failure_predictions_path = os.path.join(failure_folder, "failure_predictions.json").replace('\\','/')
+    total_predictions_path = os.path.join(output_folder_results, "total_predictions.txt").replace('\\','/')
     if args.save_predictions:
         os.makedirs(output_folder_results, exist_ok=True)
         os.makedirs(success_folder, exist_ok=True)
@@ -246,16 +255,25 @@ if __name__ == "__main__":
 
     print('\n========================================\n')
     total_acc_plates = plate_hits / num_imgs_with_plate
-    print(f"Final Results:")
-    print(f"num_vistorias:       {len(all_vistorias_paths)}")
-    print(f"num_imgs_with_plate: {num_imgs_with_plate}/{len(all_vistorias_paths)-args.start_idx}: {num_imgs_with_plate/(len(all_vistorias_paths)-args.start_idx):.2%}")
-    print(f"num_imgs_without_plate: {num_imgs_without_plate}/{len(all_vistorias_paths)-args.start_idx}: {num_imgs_without_plate/(len(all_vistorias_paths)-args.start_idx):.2%}")
-    print('-----------------')
-    print(f"Plate Hits:   {plate_hits}/{num_imgs_with_plate}    acc_plates: {total_acc_plates:.2%}")
-    print(f"Plate Misses: {plate_misses}/{num_imgs_with_plate}")
-    print('-----------------')
-    print(f"num_all_valid_chars: {num_all_valid_chars}")
-    print(f"    Char Hits:   {all_chars_hits}/{num_all_valid_chars}    acc_chars: {all_chars_hits/num_all_valid_chars:.2%}")
-    print(f"    Char Misses: {all_chars_misses}/{num_all_valid_chars}")
-    
+
+    final_results_str = ""
+    final_results_str += f"Final Results:\n"
+    final_results_str += f"path_dataset: '{args.path_dataset}'\n"
+    final_results_str += f"Model: '{args.model}'\n"
+    final_results_str += f"-----------------\n"
+    final_results_str += f"num_vistorias:       {len(all_vistorias_paths)}\n"
+    final_results_str += f"num_imgs_with_plate: {num_imgs_with_plate}/{len(all_vistorias_paths)-args.start_idx}: {num_imgs_with_plate/(len(all_vistorias_paths)-args.start_idx):.2%}\n"
+    final_results_str += f"num_imgs_without_plate: {num_imgs_without_plate}/{len(all_vistorias_paths)-args.start_idx}: {num_imgs_without_plate/(len(all_vistorias_paths)-args.start_idx):.2%}\n"
+    final_results_str += f"-----------------\n"
+    final_results_str += f"Plate Hits:   {plate_hits}/{num_imgs_with_plate}    acc_plates: {total_acc_plates:.2%}\n"
+    final_results_str += f"Plate Misses: {plate_misses}/{num_imgs_with_plate}\n"
+    final_results_str += f"-----------------\n"
+    final_results_str += f"num_all_valid_chars: {num_all_valid_chars}\n"
+    final_results_str += f"    Char Hits:   {all_chars_hits}/{num_all_valid_chars}    acc_chars: {all_chars_hits/num_all_valid_chars:.2%}\n"
+    final_results_str += f"    Char Misses: {all_chars_misses}/{num_all_valid_chars}\n"
+
+    print(final_results_str)
+    print(f"Saving final results to file: '{total_predictions_path}'")
+    save_to_txt(final_results_str, total_predictions_path)
+
     print("\nFinished\n")
