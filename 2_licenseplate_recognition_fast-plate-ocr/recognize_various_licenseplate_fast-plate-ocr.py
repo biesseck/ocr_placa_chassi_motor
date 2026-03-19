@@ -274,6 +274,7 @@ if __name__ == "__main__":
 
     print(final_results_str)
     print(f"Saving final results to file: '{total_predictions_path}'")
+    os.makedirs(os.path.dirname(total_predictions_path), exist_ok=True)
     save_to_txt(final_results_str, total_predictions_path)
 
     print("\nFinished\n")
