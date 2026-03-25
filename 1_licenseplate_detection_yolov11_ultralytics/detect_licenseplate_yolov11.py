@@ -13,12 +13,22 @@ def parse_arguments():
     return parser.parse_args()
 
 
+def resize_with_scale(image, target_size=640):
+    h, w = image.shape[:2]
+    scale = target_size / max(h, w)
+    new_w, new_h = int(w * scale), int(h * scale)
+    interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
+    resized_image = cv2.resize(image, (new_w, new_h), interpolation=interpolation)
+    return resized_image, scale
+
+
 if __name__ == "__main__":
     args = parse_arguments()
 
     print(f"Loading img '{args.image}'")
     img = cv2.imread(args.image)
-    img_resized = cv2.resize(img, (640, 640))
+    # img_resized = cv2.resize(img, (640, 640))
+    img_resized, scale = resize_with_scale(img, target_size=640)
     cv2.imshow("img_resized", img_resized)
     cv2.waitKey(0)
 
