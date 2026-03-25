@@ -75,8 +75,8 @@ if __name__ == "__main__":
 
         print('Running OCR model...')
         pred_placa = model.run(crop_placa_resized)
-        pred_placa = pred_placa[0].replace("_", "")
-        # print(f"type(pred_placa): {type(pred_placa)}")
+        # print(f"type(pred_placa[0]): {type(pred_placa[0])}")
+        pred_placa = pred_placa[0].plate.replace("_", "")
         print(f"    GT Placa  :", gt_placa)
         print(f"    Pred Placa:", pred_placa)
 
