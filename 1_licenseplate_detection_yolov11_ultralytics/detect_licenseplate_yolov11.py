@@ -9,7 +9,7 @@ from ultralytics import YOLO
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Detect license plates using YOLOv11')
     parser.add_argument('--model', type=str, default='license-plate-finetune-v1l.pt', help='Path to the YOLO model')
-    parser.add_argument('--image', type=str, required=True, help='Path to the input image')
+    parser.add_argument('--image', type=str, default='./car_with_license_plate.png', help='Path to the input image')
     return parser.parse_args()
 
 
