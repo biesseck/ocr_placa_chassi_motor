@@ -11,9 +11,7 @@ import sys
 import cv2
 import numpy as np
 from ultralytics import YOLO
-
-# Adjust import to your exact package usage
-# from fast_plate_ocr import ONNXPlateRecognizer
+from fast_plate_ocr import LicensePlateRecognizer
 
 
 @dataclass
@@ -27,7 +25,7 @@ class PlatePrediction:
 class PlatePipeline:
     def __init__(self, detector_model_path='models/license-plate-finetune-v1l.pt') -> None:
         self.detector = YOLO(detector_model_path)
-        # self.recognizer = ONNXPlateRecognizer("global-plates-mobile-vit-v2-model")
+        self.recognizer = LicensePlateRecognizer('cct-s-v1-global-model')
 
     def predict_from_bytes(self, image_bytes: bytes) -> List[PlatePrediction]:
         image = self._decode_image(image_bytes)
