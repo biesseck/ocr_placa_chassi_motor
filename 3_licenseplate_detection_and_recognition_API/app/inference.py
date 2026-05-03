@@ -20,6 +20,7 @@ class PlatePrediction:
     confidence: Optional[float]
     bbox_xyxy: List[float]
     annotated_image: Optional[str] = None # base64-encoded annotated image
+    pred_placa: Optional[str] = None # Recognized license plate text
 
 
 class PlatePipeline:
@@ -58,34 +59,38 @@ class PlatePipeline:
             x2 = min(img_resized.shape[1], x2)
             y2 = min(img_resized.shape[0], y2)
 
-            img_resized = cv2.rectangle(img_resized, (x1, y1), (x2, y2), (0,255,0), 2)
+            img_resized = cv2.rectangle(img_resized, (x1, y1), (x2, y2), (0,0,255), 2)
 
-            _, buffer = cv2.imencode(".jpg", img_resized)
-            encoded_resized = base64.b64encode(buffer).decode("utf-8")
-
-            '''
             crop = img_resized[y1:y2, x1:x2]
             if crop.size == 0:
                 continue
 
-            # fast_plate_ocr often expects RGB
-            crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+            crop_placa = img_resized[y1:y2, x1:x2]
+            crop_placa_resized, scale = self.resize_with_scale(crop_placa, target_size=128)
+            pred_placa = self.recognizer.run(crop_placa_resized)
+            pred_placa = pred_placa[0].plate.replace("_", "")
+        
+            img_resized = cv2.putText(img_resized,
+                                      text=pred_placa,
+                                      org=(x1, y1-20),
+                                      fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                                      fontScale=1,
+                                      color=(0,0,255),
+                                      thickness=2,
+                                      lineType=cv2.LINE_AA)
+            
+            _, buffer = cv2.imencode(".jpg", img_resized)
+            encoded_resized = base64.b64encode(buffer).decode("utf-8")
+        
 
-            # Adapt this call to your exact recognizer API
-            rec_output = self.recognizer.run(crop_rgb)
 
-            if isinstance(rec_output, list) and len(rec_output) > 0:
-                text = str(rec_output[0])
-            else:
-                text = str(rec_output)
-            '''
-                
             predictions.append(
                 PlatePrediction(
                     text='deu boa!',
                     confidence=None,
                     bbox_xyxy=[float(x1), float(y1), float(x2), float(y2)],
                     annotated_image=encoded_resized,
+                    pred_placa=pred_placa,
                 )
             )
 

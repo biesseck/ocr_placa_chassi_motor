@@ -7,6 +7,7 @@ class PlateResult(BaseModel):
     confidence: Optional[float] = None
     bbox_xyxy: List[float]
     annotated_image: Optional[bytes] = None # base64-encoded annotated image
+    pred_placa: Optional[str] = None
 
 
 class PredictResponse(BaseModel):

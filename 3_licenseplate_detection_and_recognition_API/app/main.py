@@ -69,6 +69,7 @@ async def predict(file: UploadFile = File(...)):
                 confidence=p.confidence,
                 bbox_xyxy=p.bbox_xyxy,
                 annotated_image=p.annotated_image,
+                pred_placa=p.pred_placa,
             )
             for p in preds
         ],
