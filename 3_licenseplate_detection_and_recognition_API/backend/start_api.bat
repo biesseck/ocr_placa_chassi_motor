@@ -16,7 +16,7 @@ if defined USE_CONDA (
     call conda activate "%CONDA_ENV%" >nul 2>&1
     echo %cd%
     echo Starting API Server...
-    call uvicorn app.main:app --reload --host 0.0.0.0 --port 80
+    call uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 ) else (
     echo ERROR: Anaconda not available. Install it first.
     pause

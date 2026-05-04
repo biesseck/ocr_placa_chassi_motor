@@ -27,8 +27,15 @@ app = FastAPI(title="Plate OCR Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten later for your frontend domain
-    allow_credentials=True,
+    # allow_origins=[
+    #     "http://localhost:5173",
+    #     "http://127.0.0.1:5173",
+    #     "http://192.168.1.0:5173",
+    #     "https://yourdomain.com",
+    # ],
+    # allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
