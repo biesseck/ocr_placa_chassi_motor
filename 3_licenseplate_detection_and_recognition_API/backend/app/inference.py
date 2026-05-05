@@ -72,7 +72,7 @@ class PlatePipeline:
         
             img_resized = cv2.putText(img_resized,
                                       text=pred_placa,
-                                      org=(x1, y1-20),
+                                      org=(x1, y2+40),
                                       fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                                       fontScale=1,
                                       color=(0,0,255),
