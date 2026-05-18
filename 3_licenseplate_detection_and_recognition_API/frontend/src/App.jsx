@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import "./App.css";
 
-const API_URL = "http://192.168.1.112:8080"; // <-- your IP
+// const API_URL = "http://192.168.1.112:8080"; // <-- your IP
+// const API_URL = "https://vistoria-ocr-api-531790625129.us-east1.run.app";
+const API_URL = "https://vistoria-ocr-api-531790625129.us-central1.run.app";
 
 function App() {
   const fileInputRef = useRef(null);
@@ -37,7 +39,7 @@ function App() {
       const base64 = data?.plates?.[0]?.annotated_image;
 
       if (!base64) {
-        throw new Error("No annotated image returned");
+        throw new Error("Nenhuma placa detectada na imagem.");
       }
 
       setResultImage(`data:image/jpeg;base64,${base64}`);
@@ -57,7 +59,7 @@ function App() {
           className="upload-button"
           onClick={() => fileInputRef.current.click()}
         >
-          Upload Image
+          Capturar Imagem
         </button>
 
         <input
