@@ -88,10 +88,15 @@ async def predict(file: UploadFile = File(...)):
         base_name = filename
     base_name = f"{timestamp}_{base_name}"
 
-    save_to_bucket(image_bytes, filename=base_name)
+    save_to_bucket(image_bytes, base_name=base_name)
 
     try:
         preds = pipeline.predict_from_bytes(image_bytes)
+
+        if len(preds) > 0:
+            pred_img_bytes = base64.b64decode(preds[0].annotated_image)
+            save_to_bucket(pred_img_bytes, base_name=f"{base_name}_annotated")
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
