@@ -69,3 +69,5 @@ sympy==1.14.0
 typing_extensions==4.14.1
 setuptools==78.1.1
 wheel==0.45.1
+
+google-cloud-storage==3.10.1

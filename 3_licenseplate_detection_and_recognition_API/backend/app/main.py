@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -10,6 +11,8 @@ from fastapi.responses import Response
 
 from app.inference import PlatePipeline
 from app.schemas import PlateResult, PredictResponse
+
+from google.cloud import storage
 
 
 pipeline: PlatePipeline | None = None
@@ -61,6 +64,8 @@ async def predict(file: UploadFile = File(...)):
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 
+    save_to_bucket(image_bytes, filename=file.filename)
+
     try:
         preds = pipeline.predict_from_bytes(image_bytes)
     except ValueError as e:
@@ -86,6 +91,9 @@ async def predict(file: UploadFile = File(...)):
 @app.post("/predict-image")
 async def predict_image(file: UploadFile = File(...)):
     image_bytes = await file.read()
+
+    save_to_bucket(image_bytes, filename=file.filename)
+
     preds = pipeline.predict_from_bytes(image_bytes)
 
     if not preds or preds[0].annotated_image is None:
@@ -94,3 +102,19 @@ async def predict_image(file: UploadFile = File(...)):
     img_bytes = base64.b64decode(preds[0].annotated_image)
 
     return Response(content=img_bytes, media_type="image/jpeg")
+
+
+def save_to_bucket(image_bytes, filename):
+    client = storage.Client()
+    bucket = client.get_bucket('vistoria-ocr-received-imgs')
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+
+    if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
+        base_name = filename.rsplit('.', 1)[0]
+    else:
+        base_name = filename
+
+    final_filename = f"{base_name}_{timestamp}.jpg"
+
+    blob = bucket.blob(f"received_imgs/{final_filename}")
+    blob.upload_from_string(image_bytes, content_type='image/jpeg')
