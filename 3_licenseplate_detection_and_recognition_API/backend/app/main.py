@@ -49,6 +49,22 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/predict-image")
+async def predict_image(file: UploadFile = File(...)):
+    image_bytes = await file.read()
+
+    save_to_bucket(image_bytes, filename=file.filename)
+
+    preds = pipeline.predict_from_bytes(image_bytes)
+
+    if not preds or preds[0].annotated_image is None:
+        raise HTTPException(status_code=404, detail="No annotated image")
+
+    img_bytes = base64.b64decode(preds[0].annotated_image)
+
+    return Response(content=img_bytes, media_type="image/jpeg")
+
+
 @app.post("/predict", response_model=PredictResponse)
 async def predict(file: UploadFile = File(...)):
     global pipeline
@@ -64,7 +80,15 @@ async def predict(file: UploadFile = File(...)):
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    save_to_bucket(image_bytes, filename=file.filename)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+    filename = file.filename
+    if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
+        base_name = filename.rsplit('.', 1)[0]
+    else:
+        base_name = filename
+    base_name = f"{timestamp}_{base_name}"
+
+    save_to_bucket(image_bytes, filename=base_name)
 
     try:
         preds = pipeline.predict_from_bytes(image_bytes)
@@ -88,33 +112,11 @@ async def predict(file: UploadFile = File(...)):
     )
 
 
-@app.post("/predict-image")
-async def predict_image(file: UploadFile = File(...)):
-    image_bytes = await file.read()
-
-    save_to_bucket(image_bytes, filename=file.filename)
-
-    preds = pipeline.predict_from_bytes(image_bytes)
-
-    if not preds or preds[0].annotated_image is None:
-        raise HTTPException(status_code=404, detail="No annotated image")
-
-    img_bytes = base64.b64decode(preds[0].annotated_image)
-
-    return Response(content=img_bytes, media_type="image/jpeg")
-
-
-def save_to_bucket(image_bytes, filename):
+def save_to_bucket(image_bytes, base_name):
     client = storage.Client()
     bucket = client.get_bucket('vistoria-ocr-received-imgs')
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
 
-    if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
-        base_name = filename.rsplit('.', 1)[0]
-    else:
-        base_name = filename
-
-    final_filename = f"{base_name}_{timestamp}.jpg"
+    final_filename = f"{base_name}.jpg"
 
     blob = bucket.blob(f"received_imgs/{final_filename}")
     blob.upload_from_string(image_bytes, content_type='image/jpeg')
