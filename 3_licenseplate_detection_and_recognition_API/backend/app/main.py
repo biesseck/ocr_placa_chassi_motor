@@ -4,8 +4,9 @@ import base64
 import os
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, File, HTTPException, UploadFile
+import json
+ 
+from fastapi import FastAPI, File, HTTPException, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
@@ -66,7 +67,7 @@ async def predict_image(file: UploadFile = File(...)):
 
 
 @app.post("/predict", response_model=PredictResponse)
-async def predict(file: UploadFile = File(...)):
+async def predict(request: Request, file: UploadFile = File(...)):
     global pipeline
 
     if pipeline is None:
@@ -88,14 +89,16 @@ async def predict(file: UploadFile = File(...)):
         base_name = filename
     base_name = f"{timestamp}_{base_name}"
 
-    save_to_bucket(image_bytes, base_name=base_name)
+    user_info = extract_user_info(request, filename)
 
     try:
         preds = pipeline.predict_from_bytes(image_bytes)
 
+        pred_img_bytes = None
         if len(preds) > 0:
             pred_img_bytes = base64.b64decode(preds[0].annotated_image)
-            save_to_bucket(pred_img_bytes, base_name=f"{base_name}_annotated")
+        
+        save_to_bucket(base_name, image_bytes, pred_img_bytes, user_info)
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -117,11 +120,37 @@ async def predict(file: UploadFile = File(...)):
     )
 
 
-def save_to_bucket(image_bytes, base_name):
+def extract_user_info(request: Request, filename: str) -> dict:
+    x_forwarded_for = request.headers.get("x-forwarded-for")
+    client_ip = x_forwarded_for.split(",")[0].strip() if x_forwarded_for else "unknown"
+    
+    return {
+        "ip_address": client_ip,
+        "country": request.headers.get("X-AppEngine-Country", "unknown"),
+        "state_region": request.headers.get("X-AppEngine-Region", "unknown"),
+        "city": request.headers.get("X-AppEngine-City", "unknown"),
+        "user_agent": request.headers.get("user-agent", "unknown"),
+        "original_filename": filename,
+        "ocr_processed_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
+def save_to_bucket(base_name, image_bytes, annotated_image_bytes=None, user_info={}):
     client = storage.Client()
     bucket = client.get_bucket('vistoria-ocr-received-imgs')
 
-    final_filename = f"{base_name}.jpg"
+    final_image_filename = f"{base_name}.jpg"
+    final_annotated_image_filename = f"{base_name}_annotated.jpg"
+    final_json_filename = f"{base_name}.json"
 
-    blob = bucket.blob(f"received_imgs/{final_filename}")
-    blob.upload_from_string(image_bytes, content_type='image/jpeg')
+    image_blob = bucket.blob(f"received_imgs/{final_image_filename}")
+    image_blob.upload_from_string(image_bytes, content_type='image/jpeg')
+
+    if not annotated_image_bytes is None:
+        annotated_image_blob = bucket.blob(f"received_imgs/{final_annotated_image_filename}")
+        annotated_image_blob.upload_from_string(annotated_image_bytes, content_type='image/jpeg')
+
+    json_string = json.dumps(user_info, indent=4, ensure_ascii=False)
+
+    json_blob = bucket.blob(f"received_imgs/{final_json_filename}")
+    json_blob.upload_from_string(json_string, content_type='application/json')
