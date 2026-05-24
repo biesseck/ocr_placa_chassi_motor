@@ -54,7 +54,8 @@ def health():
 async def predict_image(file: UploadFile = File(...)):
     image_bytes = await file.read()
 
-    save_to_bucket(image_bytes, filename=file.filename)
+    # save_to_bucket(image_bytes, filename=file.filename)
+    # save_to_bucket(base_name, image_bytes, pred_img_bytes, user_info)
 
     preds = pipeline.predict_from_bytes(image_bytes)
 
@@ -81,22 +82,24 @@ async def predict(request: Request, file: UploadFile = File(...)):
     if not image_bytes:
         raise HTTPException(status_code=400, detail="Empty file")
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
-    filename = file.filename
-    if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
-        base_name = filename.rsplit('.', 1)[0]
-    else:
-        base_name = filename
-    base_name = f"{timestamp}_{base_name}"
-
-    user_info = extract_user_info(request, filename)
-
     try:
         preds = pipeline.predict_from_bytes(image_bytes)
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H-%M-%S")
+        filename = file.filename
+        if filename.lower().endswith('.jpg') or filename.lower().endswith('.jpeg'):
+            base_name = filename.rsplit('.', 1)[0]
+        else:
+            base_name = filename
+        base_name = f"{timestamp}_{base_name}"
+        user_info = extract_user_info(request, filename)
 
         pred_img_bytes = None
         if len(preds) > 0:
             pred_img_bytes = base64.b64decode(preds[0].annotated_image)
+            base_name = f"detected/{base_name}"
+        else:
+            base_name = f"not_detected/{base_name}"
         
         save_to_bucket(base_name, image_bytes, pred_img_bytes, user_info)
 

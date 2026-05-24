@@ -82,12 +82,10 @@ class PlatePipeline:
             _, buffer = cv2.imencode(".jpg", img_resized)
             encoded_resized = base64.b64encode(buffer).decode("utf-8")
         
-
-
             predictions.append(
                 PlatePrediction(
                     text='deu boa!',
-                    confidence=None,
+                    confidence=result.boxes.conf.cpu().numpy(),
                     bbox_xyxy=[float(x1), float(y1), float(x2), float(y2)],
                     annotated_image=encoded_resized,
                     pred_placa=pred_placa,
