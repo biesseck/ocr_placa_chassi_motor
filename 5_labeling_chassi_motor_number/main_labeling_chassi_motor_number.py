@@ -84,7 +84,6 @@ def select_folder(title="Select a folder"):
     return folder
 
 
-
 def display_single_image(pil_image, label_text, filename_text):
     if not pil_image:
         print("No valid PIL image provided.")
@@ -118,19 +117,22 @@ def display_single_image(pil_image, label_text, filename_text):
     )
 
     # State variables for Annotation
-    # Explicit Order: [0: Green (Start), 1: Gray, 2: Red (End), 3: Gray]
     polygon_pts = []  
     canvas_polygons = []  
     drag_node_idx = None  
     NODE_RADIUS = 6
     final_coords = None
 
+    # Track state for right-click rotation
+    last_rotation_angle = 0.0
+    poly_center = (0, 0)
+
     # --- 2. Build Multi-Column Layout ---
     meta_frame = tk.Frame(root, bg="#f0f0f0", pady=5)
     meta_frame.pack(side="top", fill="x")
     tk.Label(
         meta_frame,
-        text=f"File: {filename_text} | Action: Drag to draw box. Grab corners to tweak layout.",
+        text=f"File: {filename_text} | Left-Click Drag: Draw/Tweak | Right-Click Drag: Rotate Box",
         font=("Arial", 10, "italic"),
         bg="#f0f0f0",
     ).pack()
@@ -171,30 +173,23 @@ def display_single_image(pil_image, label_text, filename_text):
 
     # --- 3. Robust Invariant Perspective Transformation ---
     def update_visual_check():
-        """Transforms the 4-sided polygon into a flattened horizontal rectangle.
-
-        Uses Pillow's strict QUAD sequence map: [upper-left, lower-left, lower-right, upper-right]
-        """
         if len(polygon_pts) < 4:
             return
 
-        # Map canvas positions back to original unscaled high-res image pixels
         orig_pts = [(x / scale_factor, y / scale_factor) for x, y in polygon_pts]
         tl, tr, br, bl = orig_pts
 
-        # Target dimensions based on lengths of local coordinate lines
         out_w = int(math.hypot(tr[0] - tl[0], tr[1] - tl[1]))
         out_h = int(math.hypot(bl[0] - tl[0], bl[1] - tl[1]))
 
         if out_w <= 1 or out_h <= 1:
             return
 
-        # Explicitly map our controlled sequence to Pillow's input requirement
         src_quad = [
-            tl[0], tl[1],  # Upper-Left
-            bl[0], bl[1],  # Lower-Left
-            br[0], br[1],  # Lower-Right
-            tr[0], tr[1]   # Upper-Right
+            tl[0], tl[1],  
+            bl[0], bl[1],  
+            br[0], br[1],  
+            tr[0], tr[1]   
         ]
 
         try:
@@ -207,7 +202,6 @@ def display_single_image(pil_image, label_text, filename_text):
         except Exception:
             return
 
-        # Scale preview to fit cleanly inside right layout window panel
         p_width, p_height = cropped_horizontal.size
         p_scale = min(280 / p_width, 400 / p_height)
         if p_scale < 1.0:
@@ -237,7 +231,6 @@ def display_single_image(pil_image, label_text, filename_text):
             line_id = canvas.create_line(flat_pts, fill="yellow", width=2)
             canvas_polygons.append(line_id)
 
-        # Index 0 = Green (Start), Index 2 = Red (End), Others = Gray
         for i, (x, y) in enumerate(polygon_pts):
             color = "green" if i == 0 else "red" if i == 2 else "gray"
             node_id = canvas.create_oval(
@@ -251,7 +244,7 @@ def display_single_image(pil_image, label_text, filename_text):
             )
             canvas_polygons.append(node_id)
 
-    # --- 4. Delta Vector/Quadrant Mouse Callbacks ---
+    # --- 4. Mouse Callbacks (Left Click: Draw/Tweak | Right Click: Rotate) ---
     def on_mouse_down(event):
         nonlocal drag_node_idx, polygon_pts
         x, y = event.x, event.y
@@ -275,27 +268,21 @@ def display_single_image(pil_image, label_text, filename_text):
         x, y = max(0, min(event.x, new_width)), max(0, min(event.y, new_height))
 
         if drag_node_idx is not None:
-            # Free editing mode for individual corners
             polygon_pts[drag_node_idx] = [x, y]
             redraw_polygon()
             update_visual_check()
         elif len(polygon_pts) <= 4:
-            # Creation mode: calculate layout by processing Delta-X and Delta-Y signs
             x0, y0 = polygon_pts[0]
             dx = x - x0
             dy = y - y0
 
             if dx >= 0 and dy >= 0:
-                # Quadrant 1: Dragging Down-Right (Standard Horizontal)
                 polygon_pts = [[x0, y0], [x, y0], [x, y], [x0, y]]
             elif dx < 0 and dy >= 0:
-                # Quadrant 2: Dragging Down-Left
                 polygon_pts = [[x0, y0], [x0, y], [x, y], [x, y0]]
             elif dx < 0 and dy < 0:
-                # Quadrant 3: Dragging Up-Left (Completely inverted)
                 polygon_pts = [[x0, y0], [x, y0], [x, y], [x0, y]]
             else:
-                # Quadrant 4: Dragging Up-Right (90 deg counter-clockwise adjustment)
                 polygon_pts = [[x0, y0], [x0, y], [x, y], [x, y0]]
 
             redraw_polygon()
@@ -306,9 +293,56 @@ def display_single_image(pil_image, label_text, filename_text):
             update_visual_check()
         drag_node_idx = None
 
+    # --- New Right-Click Rotation Handlers ---
+    def on_right_mouse_down(event):
+        nonlocal last_rotation_angle, poly_center
+        if len(polygon_pts) < 4:
+            return
+        
+        # Calculate bounding box center of current polygon
+        cx = sum(pt[0] for pt in polygon_pts) / 4
+        cy = sum(pt[1] for pt in polygon_pts) / 4
+        poly_center = (cx, cy)
+        
+        # Capture the baseline angle from center to mouse click point
+        last_rotation_angle = math.atan2(event.y - cy, event.x - cx)
+
+    def on_right_mouse_drag(event):
+        nonlocal last_rotation_angle, polygon_pts
+        if len(polygon_pts) < 4:
+            return
+        
+        cx, cy = poly_center
+        # Calculate current mouse angle relative to center
+        current_angle = math.atan2(event.y - cy, event.x - cx)
+        delta_angle = current_angle - last_rotation_angle
+        
+        # Rotate all 4 points uniformly around the center point
+        new_pts = []
+        for x, y in polygon_pts:
+            tx, ty = x - cx, y - cy
+            rx = tx * math.cos(delta_angle) - ty * math.sin(delta_angle)
+            ry = tx * math.sin(delta_angle) + ty * math.cos(delta_angle)
+            
+            # Clip back to canvas bounds
+            rx = max(0, min(rx + cx, new_width))
+            ry = max(0, min(ry + cy, new_height))
+            new_pts.append([rx, ry])
+            
+        polygon_pts = new_pts
+        last_rotation_angle = current_angle
+        redraw_polygon()
+        update_visual_check()
+
+    # Bind Left-Click bindings
     canvas.bind("<Button-1>", on_mouse_down)
     canvas.bind("<B1-Motion>", on_mouse_drag)
     canvas.bind("<ButtonRelease-1>", on_mouse_up)
+    
+    # Bind Right-Click bindings (Button-3 is right-click in Tkinter)
+    canvas.bind("<Button-3>", on_right_mouse_down)
+    canvas.bind("<B3-Motion>", on_right_mouse_drag)
+    canvas.bind("<ButtonRelease-3>", on_mouse_up)
 
     # --- 5. Return Value Submission Logic ---
     def on_confirm():
@@ -336,7 +370,6 @@ def display_single_image(pil_image, label_text, filename_text):
 
     root.mainloop()
     return final_coords
-
 
 
 
